@@ -1,0 +1,23 @@
+[proxy_auth]
+api_keys = sk-1,sk-2
+proxy_api_key_header = X-Proxy-API-Key
+
+[jwt]
+secret_key = GENERATE_A_RANDOM_KEY_AND_REPLACE_THIS
+algorithm = HS256
+access_token_expire_minutes = 60
+
+[App]
+max_retries = 5
+
+[OpenAI_Endpoints]
+# URL for OpenAI chat completions API
+chat_completions_url = https://api.openai.com/v1/chat/completions
+# URL for OpenAI API validation (e.g., listing models)
+validation_url = https://api.openai.com/v1/models
+
+[OpenAI_API_Keys_Config]
+# Maximum number of calls allowed for a single OpenAI API key within the defined usage window
+max_calls_per_key_per_window = 1000
+# The time window in seconds for tracking OpenAI API key usage
+usage_window_seconds = 3600

@@ -1,0 +1,423 @@
+:root {
+    /* New Flat Colors - Dark Theme Adjusted */
+    --primary-color: #3498db; /* Flat Blue */
+    --primary-hover-color: #2980b9;
+    --secondary-color: #7f8c8d; /* Medium Gray - Adjusted for dark */
+    --secondary-hover-color: #95a5a6;
+    --success-color: #2ecc71; /* Flat Green */
+    --danger-color: #e74c3c;  /* Flat Red */
+    --warning-color: #f39c12; /* Flat Orange */
+
+    /* Dark Theme Palette */
+    --background-color: #2c3e50; /* Dark Slate Blue Page Background */
+    --card-background-color: #34495e; /* Darker Slate Blue Card Background */
+    --input-background-color: #4a627a; /* Slightly Lighter Input Background */
+    
+    --text-color: #ecf0f1;    /* Light Gray Text */
+    --text-light-color: #2c3e50; /* Dark text for light backgrounds (e.g., on buttons) */
+    --text-muted-color: #95a5a6; /* Lighter Gray Text for dark theme */
+    
+    --border-color: #4a627a; /* Darker Border */
+    --input-border-color: #56708a;
+    --input-focus-border-color: var(--primary-color);
+
+    --font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --border-radius: 0.3rem; /* 5px, slightly smaller */
+    --box-shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.25); /* Adjusted shadow for dark theme */
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family-sans-serif);
+    margin: 0;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    padding: 20px;
+    font-size: 16px; /* Base font size */
+}
+
+.container {
+    background-color: var(--card-background-color);
+    padding: 25px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow-soft);
+    max-width: 1100px;
+    margin: 25px auto;
+}
+
+h1 {
+    color: var(--text-color);
+    margin-bottom: 1.8rem;
+    font-size: 2rem;
+    font-weight: 600; /* Slightly bolder */
+    text-align: center;
+}
+
+h2 {
+    color: var(--text-color);
+    margin-top: 2.5rem;
+    margin-bottom: 1.2rem;
+    font-size: 1.6rem;
+    font-weight: 500;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border-color);
+}
+h3 {
+    color: var(--text-color);
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse; /* Flat style */
+    margin-bottom: 1.5rem;
+    background-color: transparent; /* No background for table itself */
+}
+
+th, td {
+    padding: 0.9rem 1rem; /* Increased padding */
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background-color: #4a627a; /* Darker header for dark theme */
+    color: var(--text-color); /* Adjusted text color for dark header */
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    border-bottom-width: 2px; /* Thicker bottom border for header */
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+/* No hover for table rows for a flatter look, or a very subtle one */
+/* tr:hover { background-color: #fdfdfd; } */
+
+
+.api-key-input-section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: #3b536a; /* Darker section background */
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.api-key-input-section label {
+    margin-right: 0.5rem;
+    font-weight: 500;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+input[type="password"],
+input[type="text"],
+textarea {
+    padding: 0.75rem 1rem; /* Consistent padding */
+    border-radius: var(--border-radius);
+    border: 1px solid var(--input-border-color);
+    font-size: 0.95rem;
+    width: 100%; 
+    transition: border-color 0.2s ease-in-out;
+    background-color: var(--input-background-color);
+    color: var(--text-color);
+}
+textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+input[type="password"]:focus,
+input[type="text"]:focus,
+textarea:focus {
+    border-color: var(--input-focus-border-color);
+    outline: 0;
+    box-shadow: none; /* Remove focus shadow for flat look */
+}
+
+button {
+    padding: 0.75rem 1.5rem;
+    background-color: var(--primary-color);
+    color: #ffffff; /* Ensure button text is light */
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease-in-out;
+    margin-top: 0.5rem; 
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+button:hover {
+    background-color: var(--primary-hover-color);
+}
+button:active {
+    transform: none; /* No press effect */
+}
+button:disabled {
+    background-color: #bdc3c7; /* Disabled gray */
+    cursor: not-allowed;
+}
+
+.api-key-input-section button {
+     display: block;
+     width: 100%;
+     margin-top: 1rem;
+}
+
+.hidden { display: none !important; }
+
+.actions button {
+    margin-right: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    text-transform: none;
+    letter-spacing: normal;
+}
+.actions button:last-child {
+    margin-right: 0;
+}
+.actions button.delete-btn {
+    background-color: var(--danger-color);
+}
+.actions button.delete-btn:hover {
+    background-color: #c0392b; /* Darker flat red */
+}
+
+.status-active { color: var(--success-color); font-weight: 600; }
+.status-inactive { color: var(--secondary-color); font-weight: 600; } /* Changed to secondary for less alarm */
+.status-revoked { color: var(--danger-color); font-weight: 600; }
+
+
+.error-message {
+    color: #ffffff; /* Light text for error message */
+    background-color: #c0392b; /* Darker red background for dark theme */
+    border: 1px solid var(--danger-color);
+    padding: 0.8rem 1.2rem;
+    margin-top: 1rem;
+    border-radius: var(--border-radius);
+    font-size: 0.9rem;
+}
+#loading {
+    text-align: center;
+    padding: 2rem;
+    font-size: 1.1em;
+    color: var(--text-muted-color);
+}
+#loading::before { /* Simple CSS spinner */
+    content: "";
+    display: block;
+    width: 30px;
+    height: 30px;
+    margin: 0 auto 1rem auto;
+    border: 4px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Utility classes */
+.mb-1 { margin-bottom: 0.25rem !important; }
+.mb-2 { margin-bottom: 0.5rem !important; }
+.mb-3 { margin-bottom: 1rem !important; }
+.mt-1 { margin-top: 0.25rem !important; }
+.mt-2 { margin-top: 0.5rem !important; }
+.mt-3 { margin-top: 1rem !important; }
+
+/* Input group for adding key */
+.input-group {
+    display: flex;
+    width: 100%;
+    margin-bottom: 1rem;
+    align-items: stretch; /* Make button and textarea same height */
+}
+.input-group textarea {
+    flex-grow: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-right: -1px; /* Overlap borders */
+    width: auto; /* Override 100% width */
+}
+.input-group button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-top: 0; 
+    white-space: nowrap; /* Prevent button text wrapping */
+}
+
+/* Pagination Styles */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+.pagination-controls button {
+    background-color: var(--secondary-color);
+    margin: 0 0.3rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+}
+.pagination-controls button:hover {
+    background-color: var(--secondary-hover-color);
+}
+.pagination-controls button:disabled {
+    background-color: #dfe4ea; /* Lighter gray for disabled pagination */
+    color: #95a5a6;
+}
+.pagination-controls .page-info {
+    margin: 0 0.8rem;
+    font-size: 0.9rem;
+    color: var(--text-muted-color);
+}
+
+/* Stats Display Area */
+.stats-container {
+    background-color: #3b536a; /* Darker stats container */
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+}
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed var(--border-color); /* Dashed for a softer look */
+}
+.stat-item:last-child {
+    border-bottom: none;
+}
+.stat-label {
+    color: var(--text-muted-color);
+    font-size: 0.9rem;
+}
+.stat-value {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-color);
+}
+hr.stat-divider {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1rem 0;
+}
+
+/* Key Stats in Key Pool Section */
+#keyStats {
+    padding: 0.8rem;
+    background-color: #4a627a; /* Darker key stats background */
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+#keyStats strong {
+    color: #66b3ff; /* Lighter primary for dark background */
+}
+#keyStats .status-active { /* Override for this specific context if needed */
+    color: #58d68d; /* Lighter success for dark background */
+}
+#keyStats .status-inactive {
+    color: #bdc3c7; /* Lighter secondary for dark background */
+}
+
+/* Align h3 and button in Key Pool */
+.section-header-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem; /* For spacing below header and button */
+}
+.section-header-action h3 {
+    margin-top: 0; /* Reset margin if it's inside this flex container */
+    margin-bottom: 0;
+}
+.section-header-action button {
+    margin-top: 0; /* Reset margin for button */
+}
+/* Dashboard Styles */
+.dashboard-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* Responsive grid */
+    gap: 20px; /* Space between cards */
+    margin-bottom: 2rem;
+    margin-top: 1rem;
+}
+
+.dashboard-card {
+    background-color: var(--card-background-color);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow-soft);
+    text-align: center;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+}
+
+.dashboard-card .card-title {
+    font-size: 0.95rem;
+    color: var(--text-muted-color);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+
+.dashboard-card .card-value {
+    font-size: 2.2rem; /* Larger font for the value */
+    font-weight: 700;
+    color: #66b3ff; /* Lighter primary for dark background */
+    line-height: 1.2;
+}
+
+/* Optional: Different colors for different cards */
+.dashboard-card:nth-child(1) .card-value { color: #66b3ff; } /* 1 min - Lighter Blue */
+.dashboard-card:nth-child(2) .card-value { color: #f39c12; } /* 1 hour - Flat Orange (already good) */
+.dashboard-card:nth-child(3) .card-value { color: #58d68d; } /* 24 hours - Lighter Green */
+.dashboard-card:nth-child(4) .card-value { color: #af7ac5; } /* Total - Lighter Purple */
+
+/* Ensure the globalKeyStatsDisplay (old stats-container) also looks decent */
+#globalKeyStatsDisplay {
+    background-color: #3b536a; /* Darker global stats display */
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+}
+#globalKeyStatsDisplay .stat-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed var(--border-color);
+}
+#globalKeyStatsDisplay .stat-item:last-child {
+    border-bottom: none;
+}
+#globalKeyStatsDisplay .stat-label {
+    color: var(--text-muted-color);
+    font-size: 0.9rem;
+}
+#globalKeyStatsDisplay .stat-value {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-color);
+}

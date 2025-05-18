@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT 代理管理后台</title>
+    <link rel="stylesheet" href="/static/admin_styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>ChatGPT 代理管理后台</h1>
+
+        <div id="authSection" class="api-key-input-section">
+            <label for="proxyApiKeyInput">请输入代理 API Key:</label>
+            <input type="password" id="proxyApiKeyInput" name="proxyApiKeyInput">
+            <button onclick="handleLogin()">验证并加载</button>
+            <p id="authError" class="error-message hidden"></p>
+        </div>
+
+        <div id="adminContent" class="hidden">
+            <button onclick="logout()" style="float: right; background-color: var(--secondary-color);">登出</button>
+            <h2>API 调用统计看板</h2>
+            <p>数据每 <span id="refreshInterval">30</span> 秒自动刷新。</p>
+            <div id="dashboardStats" class="dashboard-container">
+                <div class="dashboard-card">
+                    <div class="card-title">最近1分钟调用</div>
+                    <div id="callsLast1m" class="card-value">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="card-title">最近1小时调用</div>
+                    <div id="callsLast1h" class="card-value">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="card-title">最近24小时调用</div>
+                    <div id="callsLast24h" class="card-value">0</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="card-title">历史总调用</div>
+                    <div id="callsTotal" class="card-value">0</div>
+                </div>
+            </div>
+            <div id="globalKeyStatsDisplay" class="stats-container" style="margin-top: 1.5rem;"> <!-- Renamed for clarity, kept old class for some styling -->
+                 <div class="stat-item">
+                    <span class="stat-label">活动Key数量:</span>
+                    <span id="activeKeysCount" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">非活动Key数量:</span>
+                    <span id="inactiveKeysCount" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">已吊销Key数量:</span>
+                    <span id="revokedKeysCount" class="stat-value">0</span>
+                </div>
+                 <div class="stat-item">
+                    <span class="stat-label">总Key数量:</span>
+                    <span id="totalKeysCount" class="stat-value">0</span>
+                </div>
+            </div>
+            <p id="statsError" class="error-message hidden"></p>
+
+            <h2>Key 池管理</h2>
+            <div id="keyStats" class="mb-3">
+                <!-- Key 数量统计将在这里显示 -->
+            </div>
+            <div class="input-group mb-3">
+                <textarea id="newOpenAiKeys" placeholder="每行一个 OpenAI API Key (sk-...)" rows="3" style="width: calc(100% - 2rem); font-family: var(--font-family-sans-serif); font-size: 0.9rem;"></textarea>
+                <button onclick="addOpenAiKeys()">批量添加 Key</button>
+            </div>
+
+            <h3>有效 API Keys</h3>
+            <table id="validKeysTable">
+                <thead>
+                    <tr>
+                        <th>Key (Masked)</th>
+                        <th>名称</th>
+                        <th>状态</th>
+                        <th>总调用</th>
+                        <th>最后使用</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 有效 Key 数据将通过 JavaScript 动态填充 -->
+                </tbody>
+            </table>
+            <div id="validKeysPagination" class="pagination-controls">
+                <!-- Pagination controls will be dynamically inserted here -->
+            </div>
+
+            <div class="section-header-action">
+                <h3>无效 API Keys</h3>
+                <button id="batchResetKeysButton">批量重置为有效</button>
+            </div>
+            <table id="invalidKeysTable">
+                <thead>
+                    <tr>
+                        <th>Key (Masked)</th>
+                        <th>名称</th>
+                        <th>状态</th>
+                        <th>总调用</th>
+                        <th>最后使用</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 无效 Key 数据将通过 JavaScript 动态填充 -->
+                </tbody>
+            </table>
+            <div id="invalidKeysPagination" class="pagination-controls">
+                <!-- Pagination controls will be dynamically inserted here -->
+            </div>
+
+            <button onclick="triggerValidateKeys()" style="margin-top: 10px;">重新验证所有失效 Key</button>
+            <p id="keyManagementError" class="error-message hidden"></p>
+        </div>
+        <div id="loading" class="hidden">正在加载数据...</div>
+    </div>
+
+    <script src="/static/admin_scripts.js"></script>
+</body>
+</html>
