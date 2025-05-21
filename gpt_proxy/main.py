@@ -27,33 +27,33 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 
 # 管理员 HTML 页面路由 (在 main中定义以绕过 admin_router 的默认认证)
-@app.get("/admin", response_class=HTMLResponse, tags=["Admin UI"])
+@app.get("/", response_class=HTMLResponse, tags=["Admin UI"])
 async def get_admin_page_html(
     proxy_api_key_from_header: Optional[str] = Header(None, alias=config.PROXY_API_KEY_HEADER)
 ):
     """
-    提供 admin.html 页面。
+    提供 index.html 页面。
     允许可选的 X-Proxy-API-Key 请求头以便在已知密钥时直接访问，
     但主要设计为页面加载后使用 JavaScript 提交 API 密钥。
     """
-    admin_html_path = os.path.join(STATIC_DIR, "admin.html")
+    index_html_path = os.path.join(STATIC_DIR, "index.html")
     try:
-        with open(admin_html_path, "r", encoding="utf-8") as f:
+        with open(index_html_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"在静态目录中未找到管理页面 (admin.html): {admin_html_path}")
+        raise HTTPException(status_code=404, detail=f"在静态目录中未找到管理页面 (index.html): {index_html_path}")
 
 
 # 将 /admin/token 端点从 routers.admin 移至 main.py 以避免路由级别的认证依赖
-@app.post("/admin/token", response_model=schemas.Token, tags=["Admin Auth"])
+@app.post("/token", response_model=schemas.Token, tags=["Admin Auth"])
 async def login_for_access_token_main(request: Request):  # 重命名以避免在 admin 路由仍然导入时发生冲突
     """
     管理员使用代理 API 密钥作为密码登录。
     返回一个 JWT 访问令牌。
     在 main.py 中定义以绕过 admin 路由的默认 JWT 保护。
     """
-    print("DEBUG (main.py): /admin/token endpoint CALLED!")  # 调试信息：/admin/token 端点被调用！
+    print("DEBUG (main.py): /token endpoint CALLED!")  # 调试信息：/token 端点被调用！
 
     proxy_api_key_candidate: Optional[str] = None
     try:
@@ -136,9 +136,7 @@ async def startup_event():
 
 
 # --- API 端点 ---
-@app.get("/")
-async def root():
-    return {"message": "ChatGPT Proxy is running!"}
+# 原来的根路径端点被移除，因为现在根路径显示管理页面
 
 
 # 如果您在本地运行此文件 (例如 uvicorn main:app --reload)

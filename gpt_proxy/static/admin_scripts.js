@@ -1,4 +1,4 @@
-const API_BASE_URL = '/admin'; // 后端 API 的基础路径
+const API_BASE_URL = ''; // 后端 API 的基础路径
         const JWT_TOKEN_LOCALSTORAGE_KEY = 'adminAuthToken';
         // let PROXY_API_KEY = ''; // No longer needed globally, token will be stored
         const REFRESH_INTERVAL_MS = 30000; // 30 秒
@@ -129,13 +129,22 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             formData.append('password', password);
 
             try {
-                const tokenData = await apiRequest('/token', 'POST', formData, true); // true for isLogin
+                // 登录接口保持在根路径，不使用/api前缀
+                const tokenData = await fetch('/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData
+                }).then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.json();
+                });
+                
                 if (tokenData && tokenData.access_token) {
                     localStorage.setItem(JWT_TOKEN_LOCALSTORAGE_KEY, tokenData.access_token);
                     await loadInitialData(); // Load data now that we have a token
                 } else {
-                    // apiRequest might throw, or return null/undefined if it handles the error display
-                    // If it returns here without tokenData, it's an issue.
                     showAuthError('登录失败，未获取到令牌。');
                     logoutAndShowLogin("登录失败，请重试。"); // Ensure UI is reset
                 }
@@ -199,7 +208,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
             document.getElementById('loading').classList.remove('hidden');
             try {
-                const response = await apiRequest('/keys/reset_invalid_to_valid', 'POST');
+                const response = await apiRequest('/api/keys/reset_invalid_to_valid', 'POST');
                 if (response) {
                     alert(response.message || `操作完成，重置了 ${response.count} 个Key。`);
                     // 刷新统计信息和列表
@@ -364,7 +373,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             const newName = prompt(`请输入 Key ID ${keyId} 的新名称:`, currentName);
             if (newName !== null && newName.trim() !== '') {
                 try {
-                    const result = await apiRequest(`/keys/${keyId}/name`, 'PUT', { name: newName.trim() });
+                    const result = await apiRequest(`/api/keys/${keyId}/name`, 'PUT', { name: newName.trim() });
                     if (result) {
                         // 刷新统计信息和列表
                         await loadKeyPoolSummary();
@@ -383,7 +392,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
         async function loadKeyPoolSummary() {
             try {
                 // 使用旧接口获取统计数据
-                const categorizedKeys = await apiRequest('/keys');
+                const categorizedKeys = await apiRequest('/api/keys');
                 if (!categorizedKeys || typeof categorizedKeys.valid_keys === 'undefined' || typeof categorizedKeys.invalid_keys === 'undefined') {
                     showKeyManagementError('加载 Key 池统计失败：返回数据格式不正确。');
                     return;
@@ -407,7 +416,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
         // 加载有效的Keys（使用分页API）
         async function loadValidKeys(page, pageSize) {
             try {
-                const endpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=active`;
+                const endpoint = `/api/keys/paginated?page=${page}&page_size=${pageSize}&status=active`;
                 const response = await apiRequest(endpoint);
                 
                 if (!response || !response.items || !response.page_info) {
@@ -444,11 +453,11 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             try {
                 // 无效Key包括inactive和revoked状态，需要多次请求后合并
                 // 先获取inactive状态的keys
-                const inactiveEndpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=inactive`;
+                const inactiveEndpoint = `/api/keys/paginated?page=${page}&page_size=${pageSize}&status=inactive`;
                 const inactiveResponse = await apiRequest(inactiveEndpoint);
                 
                 // 可选：获取revoked状态的keys
-                // const revokedEndpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=revoked`;
+                // const revokedEndpoint = `/api/keys/paginated?page=${page}&page_size=${pageSize}&status=revoked`;
                 // const revokedResponse = await apiRequest(revokedEndpoint);
                 
                 if (!inactiveResponse || !inactiveResponse.items || !inactiveResponse.page_info) {
@@ -522,7 +531,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             
             try {
                 // 使用批量添加API
-                const result = await apiRequest('/keys/bulk', 'POST', { api_keys: keysString });
+                const result = await apiRequest('/api/keys/bulk', 'POST', { api_keys: keysString });
                 document.getElementById('loading').classList.add('hidden');
                 newKeysInput.value = ''; // Clear textarea
                 
@@ -552,7 +561,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
                 return;
             }
             try {
-                const result = await apiRequest(`/keys/${keyId}`, 'DELETE');
+                const result = await apiRequest(`/api/keys/${keyId}`, 'DELETE');
                 if (result) {
                     // 刷新统计信息和列表
                     await loadKeyPoolSummary();
@@ -566,7 +575,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
 
         async function toggleKeyStatus(keyId, newStatus) {
             try {
-                const result = await apiRequest(`/keys/${keyId}/status`, 'PUT', { status: newStatus });
+                const result = await apiRequest(`/api/keys/${keyId}/status`, 'PUT', { status: newStatus });
                 if (result) {
                     // 刷新统计信息和列表
                     await loadKeyPoolSummary();
@@ -584,7 +593,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
             document.getElementById('loading').classList.remove('hidden');
             try {
-                const result = await apiRequest('/validate_keys', 'POST');
+                const result = await apiRequest('/api/validate_keys', 'POST');
                 if (result) {
                     alert('Key 验证请求已发送。请稍后刷新查看最新状态。');
                     // 刷新统计信息和列表
@@ -601,7 +610,7 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
 
         async function loadStats() {
             try {
-                const response = await apiRequest('/stats'); // Expects { global_stats: { ... } }
+                const response = await apiRequest('/api/stats'); // Expects { global_stats: { ... } }
                 if (!response || !response.global_stats) {
                     showStatsError('加载统计数据失败：返回数据格式不正确。');
                     // Clear dashboard values

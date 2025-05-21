@@ -14,31 +14,31 @@ from .. import database as db
 from .. import dependencies
 
 router = APIRouter(
-    prefix="/admin",
+    prefix="/api",
     tags=["Admin"],
     dependencies=[Depends(dependencies.get_current_admin_user)],  # 管理员路由的默认依赖项已更新
 )
 
-# 注意: 用于提供 HTML 的 /admin GET 路由不使用路由器的默认依赖项，
+# 注意: 用于提供 HTML 的根路径 GET 路由不使用路由器的默认依赖项，
 # 因为它需要可访问以允许用户在页面上输入 API 密钥。
 # 如果需要不同的身份验证，我们会在 main.py 中为其创建一个单独的路由器或直接使用 app.get。
 # 为简单起见，我们将为此特定路由覆盖依赖项或在内部处理身份验证。
 
 # 为了提供 HTML 页面，我们可能需要一种方法来绕过路由器的默认依赖项。
-# 或者，依赖项本身可以更灵活（例如，如果路径是 /admin 且尚无密钥，则允许）。
+# 或者，依赖项本身可以更灵活（例如，如果路径是根路径且尚无密钥，则允许）。
 # 目前，我们假设 verify_proxy_api_key 用于 API 调用，HTML 服务则以不同方式处理，
 # 或者 admin.html 上的客户端 JS 处理初始密钥输入，后续 API 调用使用该密钥。
 
-# 如果初始页面加载时存在问题，让我们调整 /admin GET 路由，使其不使用路由器级别的依赖项。
+# 如果初始页面加载时存在问题，让我们调整根路径 GET 路由，使其不使用路由器级别的依赖项。
 # 我们可以在主应用程序或不同的路由器上定义它。
 # 目前，我将其包含在此处，并假设客户端处理流程。
-# 如果直接加载 /admin 页面需要 HTML 本身在请求头中没有密钥的情况下工作，
+# 如果直接加载根路径页面需要 HTML 本身在请求头中没有密钥的情况下工作，
 # 则此特定端点将需要 `dependencies=[]` 来覆盖路由器的默认设置。
-# 然而，最初的 main.py 为 GET /admin 路由设置了 `proxy_api_key_from_header`，
+# 然而，最初的 main.py 为 GET 根路径路由设置了 `proxy_api_key_from_header`，
 # 这意味着它*可以*接收密钥，但并未对 HTML 响应本身严格强制执行。
 
 # get_admin_page_html 及其 @router.get("") 已移至 main.py
-# /admin/token 端点已移至 main.py
+# /token 端点已移至 main.py
 
 
 @router.post("/validate_keys", response_model=List[schemas.KeyValidationResult])
