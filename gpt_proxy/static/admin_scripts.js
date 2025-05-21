@@ -172,10 +172,9 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
 
             try {
                 // 尝试加载初始数据
-                await loadKeyPoolSummary();
+                await loadStats(); // 加载统计信息，包含Key池摘要更新
                 await loadValidKeys(1, validKeysPageSize);
                 await loadInvalidKeys(1, invalidKeysPageSize);
-                await loadStats();
                 
                 document.getElementById('adminContent').classList.remove('hidden');
                 
@@ -190,7 +189,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 console.error("Error loading initial data:", error);
                 logoutAndShowLogin(`加载初始数据失败: ${error.message}`);
             } finally {
-                 document.getElementById('loading').classList.add('hidden');
+                document.getElementById('loading').classList.add('hidden');
             }
         }
         
@@ -214,7 +213,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 if (response) {
                     alert(response.message || `操作完成，重置了 ${response.count} 个Key。`);
                     // 刷新统计信息和列表
-                    await loadKeyPoolSummary();
+                    await loadStats();
                     await loadValidKeys(1, validKeysPageSize);
                     await loadInvalidKeys(1, invalidKeysPageSize);
                 }
@@ -381,7 +380,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                     const result = await apiRequest(`/api/keys/${keyId}/name`, 'PUT', { name: newName.trim() });
                     if (result) {
                         // 刷新统计信息和列表
-                        await loadKeyPoolSummary();
+                        await loadStats();
                         await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
                         await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                     }
@@ -394,25 +393,63 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
         }
 
         // 加载Key池统计信息
-        async function loadKeyPoolSummary() {
+        async function loadStats() {
             try {
-                // 使用旧接口获取统计数据
-                const categorizedKeys = await apiRequest('/api/keys');
-                if (!categorizedKeys || typeof categorizedKeys.valid_keys === 'undefined' || typeof categorizedKeys.invalid_keys === 'undefined') {
-                    showKeyManagementError('加载 Key 池统计失败：返回数据格式不正确。');
+                const response = await apiRequest('/api/stats'); // Expects { global_stats: { ... } }
+                if (!response || !response.global_stats) {
+                    showStatsError('加载统计数据失败：返回数据格式不正确。');
+                    // Clear dashboard values
+                    document.getElementById('callsLast1m').textContent = 'N/A';
+                    document.getElementById('callsLast1h').textContent = 'N/A';
+                    document.getElementById('callsLast24h').textContent = 'N/A';
+                    document.getElementById('callsTotal').textContent = 'N/A';
+                    // Clear key stats
+                    document.getElementById('activeKeysCount').textContent = 'N/A';
+                    document.getElementById('inactiveKeysCount').textContent = 'N/A';
+                    document.getElementById('revokedKeysCount').textContent = 'N/A';
+                    document.getElementById('totalKeysCount').textContent = 'N/A';
                     return;
                 }
 
-                const totalValidKeys = categorizedKeys.valid_keys.length;
-                const totalInvalidKeys = categorizedKeys.invalid_keys.length;
-                const totalKeys = totalValidKeys + totalInvalidKeys;
+                const globalStats = response.global_stats;
+
+                // Populate new dashboard cards
+                document.getElementById('callsLast1m').textContent = globalStats.grand_total_usage_last_1m;
+                document.getElementById('callsLast1h').textContent = globalStats.grand_total_usage_last_1h;
+                document.getElementById('callsLast24h').textContent = globalStats.grand_total_usage_last_24h;
+                document.getElementById('callsTotal').textContent = globalStats.grand_total_requests_all_time;
+
+                // Populate key stats (which are still in globalStats)
+                document.getElementById('activeKeysCount').textContent = globalStats.active_keys_count;
+                document.getElementById('inactiveKeysCount').textContent = globalStats.inactive_keys_count;
+                document.getElementById('revokedKeysCount').textContent = globalStats.revoked_keys_count;
+                document.getElementById('totalKeysCount').textContent = globalStats.total_keys_count;
+                
+                // 更新 Key 池摘要信息
+                const totalValidKeys = globalStats.active_keys_count;
+                const totalInvalidKeys = globalStats.inactive_keys_count + globalStats.revoked_keys_count;
+                const totalKeys = globalStats.total_keys_count;
                 
                 const keyStatsEl = document.getElementById('keyStats');
                 keyStatsEl.innerHTML = `总 Key 数量: <strong>${totalKeys}</strong> (有效: <strong class="status-active">${totalValidKeys}</strong>, 无效: <strong class="status-inactive">${totalInvalidKeys}</strong>)`;
-                
                 document.getElementById('keyManagementError').classList.add('hidden');
+                
+                document.getElementById('statsError').classList.add('hidden');
             } catch (error) {
-                showKeyManagementError(`加载 Key 池统计失败: ${error.message}`);
+                showStatsError(`加载统计数据失败: ${error.message}`);
+                if (statsRefreshIntervalId) clearInterval(statsRefreshIntervalId);
+                // Clear dashboard values on error
+                document.getElementById('callsLast1m').textContent = '错误';
+                document.getElementById('callsLast1h').textContent = '错误';
+                document.getElementById('callsLast24h').textContent = '错误';
+                document.getElementById('callsTotal').textContent = '错误';
+                // Clear key stats on error
+                document.getElementById('activeKeysCount').textContent = '错误';
+                document.getElementById('inactiveKeysCount').textContent = '错误';
+                document.getElementById('revokedKeysCount').textContent = '错误';
+                document.getElementById('totalKeysCount').textContent = '错误';
+                
+                // 显示 Key 池摘要错误
                 const keyStatsEl = document.getElementById('keyStats');
                 keyStatsEl.innerHTML = `<span class="error-message">无法加载 Key 统计信息。</span>`;
             }
@@ -541,7 +578,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 newKeysInput.value = ''; // Clear textarea
                 
                 // 刷新统计信息和列表
-                await loadKeyPoolSummary();
+                await loadStats();
                 await loadValidKeys(1, validKeysPageSize);
                 await loadInvalidKeys(1, invalidKeysPageSize);
 
@@ -569,7 +606,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 const result = await apiRequest(`/api/keys/${keyId}`, 'DELETE');
                 if (result) {
                     // 刷新统计信息和列表
-                    await loadKeyPoolSummary();
+                    await loadStats();
                     await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
                     await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                 }
@@ -585,7 +622,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                     const result = await apiRequest(`/api/keys/${keyId}/status`, 'PUT', { status: newStatus });
                     if (result) {
                         // 刷新统计信息和列表
-                        await loadKeyPoolSummary();
+                        await loadStats();
                         await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
                         await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                     }
@@ -605,7 +642,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 if (result) {
                     alert('Key 验证请求已发送。请稍后刷新查看最新状态。');
                     // 刷新统计信息和列表
-                    await loadKeyPoolSummary();
+                    await loadStats();
                     await loadValidKeys(1, validKeysPageSize);
                     await loadInvalidKeys(1, invalidKeysPageSize);
                 }
@@ -613,54 +650,5 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 showKeyManagementError(`触发 Key 验证失败: ${error.message}`);
             } finally {
                 document.getElementById('loading').classList.add('hidden');
-            }
-        }
-
-        async function loadStats() {
-            try {
-                const response = await apiRequest('/api/stats'); // Expects { global_stats: { ... } }
-                if (!response || !response.global_stats) {
-                    showStatsError('加载统计数据失败：返回数据格式不正确。');
-                    // Clear dashboard values
-                    document.getElementById('callsLast1m').textContent = 'N/A';
-                    document.getElementById('callsLast1h').textContent = 'N/A';
-                    document.getElementById('callsLast24h').textContent = 'N/A';
-                    document.getElementById('callsTotal').textContent = 'N/A';
-                    // Clear key stats
-                    document.getElementById('activeKeysCount').textContent = 'N/A';
-                    document.getElementById('inactiveKeysCount').textContent = 'N/A';
-                    document.getElementById('revokedKeysCount').textContent = 'N/A';
-                    document.getElementById('totalKeysCount').textContent = 'N/A';
-                    return;
-                }
-
-                const globalStats = response.global_stats;
-
-                // Populate new dashboard cards
-                document.getElementById('callsLast1m').textContent = globalStats.grand_total_usage_last_1m;
-                document.getElementById('callsLast1h').textContent = globalStats.grand_total_usage_last_1h;
-                document.getElementById('callsLast24h').textContent = globalStats.grand_total_usage_last_24h;
-                document.getElementById('callsTotal').textContent = globalStats.grand_total_requests_all_time;
-
-                // Populate key stats (which are still in globalStats)
-                document.getElementById('activeKeysCount').textContent = globalStats.active_keys_count;
-                document.getElementById('inactiveKeysCount').textContent = globalStats.inactive_keys_count;
-                document.getElementById('revokedKeysCount').textContent = globalStats.revoked_keys_count;
-                document.getElementById('totalKeysCount').textContent = globalStats.total_keys_count;
-                
-                document.getElementById('statsError').classList.add('hidden');
-            } catch (error) {
-                showStatsError(`加载统计数据失败: ${error.message}`);
-                if (statsRefreshIntervalId) clearInterval(statsRefreshIntervalId);
-                // Clear dashboard values on error
-                document.getElementById('callsLast1m').textContent = '错误';
-                document.getElementById('callsLast1h').textContent = '错误';
-                document.getElementById('callsLast24h').textContent = '错误';
-                document.getElementById('callsTotal').textContent = '错误';
-                // Clear key stats on error
-                document.getElementById('activeKeysCount').textContent = '错误';
-                document.getElementById('inactiveKeysCount').textContent = '错误';
-                document.getElementById('revokedKeysCount').textContent = '错误';
-                document.getElementById('totalKeysCount').textContent = '错误';
             }
         }
