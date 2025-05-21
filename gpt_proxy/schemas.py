@@ -46,6 +46,23 @@ class NewOpenAIKeyPayload(BaseModel):
     name: Optional[str] = None
 
 
+class BulkOpenAIKeysPayload(BaseModel):
+    api_keys: str  # 包含多个key的字符串，每行一个key
+
+
+class AddKeyResult(BaseModel):
+    success: bool
+    key_suffix: str
+    error_message: Optional[str] = None
+    key_id: Optional[str] = None
+
+
+class BulkAddKeysResponse(BaseModel):
+    results: List[AddKeyResult]
+    success_count: int
+    error_count: int
+
+
 class KeyStatusUpdatePayload(BaseModel):
     status: str
 

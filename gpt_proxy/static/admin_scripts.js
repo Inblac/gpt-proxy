@@ -457,36 +457,27 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
             
             document.getElementById('loading').classList.remove('hidden');
-            let successCount = 0;
-            let errorCount = 0;
-            let errors = [];
-
-            for (const key of keysArray) {
-                try {
-                    const result = await apiRequest('/keys', 'POST', { api_key: key });
-                    if (result) {
-                        successCount++;
-                    } else { // Should not happen if apiRequest throws on error, but as a safeguard
-                        errorCount++;
-                        errors.push(`Key ${maskApiKey(key, false).textContent} 添加失败 (未知原因)`);
-                    }
-                } catch (error) {
-                    errorCount++;
-                    errors.push(`Key ${maskApiKey(key, false).textContent} 添加失败: ${error.message}`);
-                }
-            }
             
-            document.getElementById('loading').classList.add('hidden');
-            newKeysInput.value = ''; // Clear textarea
-            loadKeyPool(); // Reload list
+            try {
+                // 使用新的批量添加API
+                const result = await apiRequest('/keys/bulk', 'POST', { api_keys: keysString });
+                document.getElementById('loading').classList.add('hidden');
+                newKeysInput.value = ''; // Clear textarea
+                loadKeyPool(); // Reload list
 
-            if (errorCount > 0) {
-                showKeyManagementError(`批量添加完成: ${successCount} 个成功, ${errorCount} 个失败。\n失败详情:\n${errors.join('\n')}`);
-            } else {
-                // Optionally show a success message if all were successful
-                // For now, loadKeyPool will refresh and show them.
-                // You could use a temporary success message similar to error message if desired.
-                alert(`成功添加 ${successCount} 个 Key。`);
+                if (result.error_count > 0) {
+                    const errorDetails = result.results
+                        .filter(r => !r.success)
+                        .map(r => `Key ${r.key_suffix} 添加失败: ${r.error_message}`)
+                        .join('\n');
+                    
+                    showKeyManagementError(`批量添加完成: ${result.success_count} 个成功, ${result.error_count} 个失败。\n失败详情:\n${errorDetails}`);
+                } else {
+                    alert(`成功添加 ${result.success_count} 个 Key。`);
+                }
+            } catch (error) {
+                document.getElementById('loading').classList.add('hidden');
+                showKeyManagementError(`批量添加Key失败: ${error.message}`);
             }
         }
 

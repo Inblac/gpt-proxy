@@ -231,6 +231,60 @@ async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while adding the key: {str(e)}")
 
 
+@router.post("/keys/bulk", response_model=schemas.BulkAddKeysResponse, status_code=201)
+async def add_bulk_openai_keys_endpoint(payload: schemas.BulkOpenAIKeysPayload):
+    """批量添加OpenAI API Keys。每行一个key，使用换行分隔。"""
+    keys_string = payload.api_keys.strip()
+    keys_array = keys_string.split("\n")
+    keys_array = [key.strip() for key in keys_array if key.strip()]
+
+    if not keys_array:
+        raise HTTPException(status_code=400, detail="No valid keys provided.")
+
+    results = []
+    success_count = 0
+    error_count = 0
+
+    for key in keys_array:
+        result = schemas.AddKeyResult(
+            success=False,
+            key_suffix=utils.mask_api_key_for_display(key),
+        )
+
+        if not key.startswith("sk-"):
+            result.error_message = "Invalid OpenAI API Key format. Must start with 'sk-'."
+            results.append(result)
+            error_count += 1
+            continue
+
+        try:
+            existing_key = db.get_api_key_by_key_value(key)
+            if existing_key:
+                result.error_message = f"API key already exists with ID {existing_key['id']}."
+                results.append(result)
+                error_count += 1
+                continue
+
+            key_id = db.add_api_key(api_key=key, status=config.KEY_STATUS_ACTIVE)
+            result.success = True
+            result.key_id = key_id
+            success_count += 1
+        except Exception as e:
+            result.error_message = str(e)
+            error_count += 1
+        
+        results.append(result)
+
+    if success_count > 0:
+        utils.update_openai_key_cycle()
+    
+    return schemas.BulkAddKeysResponse(
+        results=results,
+        success_count=success_count,
+        error_count=error_count
+    )
+
+
 @router.delete("/keys/{key_id}", status_code=204)
 async def delete_openai_key_endpoint(key_id: str):
     key_to_delete = db.get_api_key_by_id(key_id)
@@ -317,7 +371,7 @@ async def update_openai_key_name_endpoint_admin(key_id: str, payload: schemas.Ke
 @router.post("/keys/reset_invalid_to_valid", response_model=schemas.ResetKeysResponse)
 async def reset_invalid_keys_to_valid_endpoint():
     """
-    将所有状态为“invalid”的 API 密钥重置为“active”。
+    将所有状态为"invalid"的 API 密钥重置为"active"。
     """
     all_keys = db.get_all_api_keys()
     invalid_keys = [
