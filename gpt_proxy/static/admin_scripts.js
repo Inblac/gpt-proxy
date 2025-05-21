@@ -86,6 +86,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
             document.getElementById('authSection').classList.remove('hidden');
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('proxyApiKeyInput').value = ''; // Clear password field
+            document.getElementById('topRightActions').classList.add('hidden'); // 隐藏顶部登出按钮
             
             if (errorMessage) {
                 showAuthError(errorMessage);
@@ -167,6 +168,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
             document.getElementById('loading').classList.remove('hidden');
             document.getElementById('authSection').classList.add('hidden');
             document.getElementById('adminContent').classList.add('hidden'); // Hide content until data loads
+            document.getElementById('topRightActions').classList.remove('hidden'); // 显示顶部登出按钮
 
             try {
                 // 尝试加载初始数据
@@ -224,7 +226,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
         }
 
         function logout() {
-            logoutAndShowLogin("您已成功登出。");
+            logoutAndShowLogin();
         }
 
         function maskApiKey(key, forceShow = false) {
@@ -276,7 +278,7 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
             if (keysData.length === 0) {
                 const row = tbody.insertRow();
                 const cell = row.insertCell();
-                cell.colSpan = 7; // Masked Key, Name, Status, Total Calls, Last Used, Created At, Actions
+                cell.colSpan = 6; // Masked Key, Status, Total Calls, Last Used, Created At, Actions
                 cell.textContent = `暂无${keyType} Key。`;
                 return;
             }
@@ -284,10 +286,18 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
             keysData.forEach(key => {
                 const row = tbody.insertRow();
                 row.insertCell().textContent = key.api_key_masked || 'N/A';
-                row.insertCell().textContent = key.name || 'N/A';
                 
                 const statusCell = row.insertCell();
-                statusCell.textContent = key.status;
+                // 将状态文本改为中文
+                let statusText = '未知';
+                if (key.status === 'active') {
+                    statusText = '有效';
+                } else if (key.status === 'inactive') {
+                    statusText = '无效';
+                } else if (key.status === 'revoked') {
+                    statusText = '已吊销';
+                }
+                statusCell.textContent = statusText;
                 statusCell.className = key.status === 'active' ? 'status-active' : (key.status === 'inactive' ? 'status-inactive' : 'status-revoked');
                 
                 row.insertCell().textContent = key.total_requests !== undefined ? key.total_requests : 'N/A';
@@ -301,22 +311,17 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
                 let newStatus, buttonText;
                 if (key.status === 'active') {
                     newStatus = 'inactive';
-                    buttonText = '设为 Inactive';
+                    buttonText = '设为无效';
                 } else if (key.status === 'inactive') {
                     newStatus = 'active';
-                    buttonText = '设为 Active';
+                    buttonText = '设为有效';
                 } else { // e.g. 'revoked'
                     newStatus = 'active'; // Or 'inactive', depending on desired behavior for revoked keys
-                    buttonText = '尝试设为 Active'; // Or a different text
+                    buttonText = '设为有效'; 
                 }
                 toggleStatusButton.textContent = buttonText;
                 toggleStatusButton.onclick = () => toggleKeyStatus(key.id, newStatus);
                 actionsCell.appendChild(toggleStatusButton);
-
-                const editNameButton = document.createElement('button');
-                editNameButton.textContent = '改名';
-                editNameButton.onclick = () => promptEditKeyName(key.id, key.name || '');
-                actionsCell.appendChild(editNameButton);
 
                 const deleteButton = document.createElement('button');
                 deleteButton.textContent = '删除';
@@ -575,15 +580,18 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
 
         async function toggleKeyStatus(keyId, newStatus) {
             try {
-                const result = await apiRequest(`/api/keys/${keyId}/status`, 'PUT', { status: newStatus });
-                if (result) {
-                    // 刷新统计信息和列表
-                    await loadKeyPoolSummary();
-                    await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
-                    await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
+                const newStatusText = newStatus === 'active' ? '有效' : (newStatus === 'inactive' ? '无效' : '已吊销');
+                if (confirm(`确定要将此Key状态更改为 ${newStatusText} 吗？`)) {
+                    const result = await apiRequest(`/api/keys/${keyId}/status`, 'PUT', { status: newStatus });
+                    if (result) {
+                        // 刷新统计信息和列表
+                        await loadKeyPoolSummary();
+                        await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
+                        await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
+                    }
                 }
             } catch (error) {
-                showKeyManagementError(`更新 Key 状态失败: ${error.message}`);
+                showKeyManagementError(`更新Key状态失败: ${error.message}`);
             }
         }
 
