@@ -421,3 +421,50 @@ hr.stat-divider {
     font-size: 1rem;
     color: var(--text-color);
 }
+
+.table-options {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+.page-size-selector {
+    display: flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.page-size-selector label {
+    margin-right: 5px;
+}
+
+.page-size-selector select {
+    padding: 3px;
+    border-radius: 3px;
+    border: 1px solid var(--border-color);
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 15px 0;
+    gap: 10px;
+}
+
+.pagination-controls button {
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.pagination-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.page-info {
+    margin: 0 10px;
+}

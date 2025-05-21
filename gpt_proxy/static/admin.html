@@ -69,6 +69,17 @@
             </div>
 
             <h3>有效 API Keys</h3>
+            <div class="table-options">
+                <div class="page-size-selector">
+                    <label for="validKeysPageSize">每页显示:</label>
+                    <select id="validKeysPageSize" onchange="changeValidKeysPageSize(this.value)">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
             <table id="validKeysTable">
                 <thead>
                     <tr>
@@ -92,6 +103,17 @@
             <div class="section-header-action">
                 <h3>无效 API Keys</h3>
                 <button id="batchResetKeysButton">批量重置为有效</button>
+            </div>
+            <div class="table-options">
+                <div class="page-size-selector">
+                    <label for="invalidKeysPageSize">每页显示:</label>
+                    <select id="invalidKeysPageSize" onchange="changeInvalidKeysPageSize(this.value)">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
             </div>
             <table id="invalidKeysTable">
                 <thead>

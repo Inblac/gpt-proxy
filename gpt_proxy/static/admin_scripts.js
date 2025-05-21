@@ -4,12 +4,20 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
         const REFRESH_INTERVAL_MS = 30000; // 30 秒
         let statsRefreshIntervalId;
 
-        // Pagination state for Key Pool
+        // 分页状态
+        let validKeysPageSize = 10;
+        let validKeysCurrentPage = 1;
+        let validKeysTotalPages = 1;
+        let validKeysTotalCount = 0;
+        
+        let invalidKeysPageSize = 10;
+        let invalidKeysCurrentPage = 1;
+        let invalidKeysTotalPages = 1;
+        let invalidKeysTotalCount = 0;
+
+        // 用于存储当前列表，已不需要存储所有数据
         let validKeysData = [];
         let invalidKeysData = [];
-        let currentValidKeyPage = 1;
-        let currentInvalidKeyPage = 1;
-        const KEYS_PER_PAGE = 10; // Or any other number you prefer
 
         document.getElementById('refreshInterval').textContent = REFRESH_INTERVAL_MS / 1000;
 
@@ -152,22 +160,23 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             document.getElementById('adminContent').classList.add('hidden'); // Hide content until data loads
 
             try {
-                // Attempt to fetch initial data (e.g., keys) to verify token and load page
-                const keys = await apiRequest('/keys'); // This will use the stored token
-                if (keys !== null) { // apiRequest returns null on auth failure handled by logoutAndShowLogin
-                    document.getElementById('adminContent').classList.remove('hidden');
-                    loadKeyPool(); // Assumes this function populates based on `keys` or makes its own call
-                    loadStats();   // Assumes this function makes its own call
-                    if (statsRefreshIntervalId) clearInterval(statsRefreshIntervalId);
-                    statsRefreshIntervalId = setInterval(loadStats, REFRESH_INTERVAL_MS);
-                } else {
-                    // If keys is null, apiRequest should have called logoutAndShowLogin
-                    // No further action needed here as UI should be reset.
-                }
+                // 尝试加载初始数据
+                await loadKeyPoolSummary();
+                await loadValidKeys(1, validKeysPageSize);
+                await loadInvalidKeys(1, invalidKeysPageSize);
+                await loadStats();
+                
+                document.getElementById('adminContent').classList.remove('hidden');
+                
+                // 设置自动刷新
+                if (statsRefreshIntervalId) clearInterval(statsRefreshIntervalId);
+                statsRefreshIntervalId = setInterval(loadStats, REFRESH_INTERVAL_MS);
+                
+                // 初始化分页下拉框
+                document.getElementById('validKeysPageSize').value = validKeysPageSize;
+                document.getElementById('invalidKeysPageSize').value = invalidKeysPageSize;
             } catch (error) {
                 console.error("Error loading initial data:", error);
-                // apiRequest might have already called logoutAndShowLogin if it was an auth error.
-                // If it's another error, we might want to show a generic error or still logout.
                 logoutAndShowLogin(`加载初始数据失败: ${error.message}`);
             } finally {
                  document.getElementById('loading').classList.add('hidden');
@@ -193,7 +202,10 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
                 const response = await apiRequest('/keys/reset_invalid_to_valid', 'POST');
                 if (response) {
                     alert(response.message || `操作完成，重置了 ${response.count} 个Key。`);
-                    loadKeyPool(); // Refresh the key lists
+                    // 刷新统计信息和列表
+                    await loadKeyPoolSummary();
+                    await loadValidKeys(1, validKeysPageSize);
+                    await loadInvalidKeys(1, invalidKeysPageSize);
                 }
             } catch (error) {
                 showKeyManagementError(`批量重置Key失败: ${error.message}`);
@@ -248,123 +260,104 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
         }
 
-        // Generic function to render a table of keys (valid or invalid)
-        function renderKeysTable(keysData, tableId, paginationContainerId, currentPage, keysPerPage, keyType) {
+        function renderTable(keysData, tableId, keyType) {
             const tbody = document.getElementById(tableId).getElementsByTagName('tbody')[0];
             tbody.innerHTML = ''; // Clear existing rows
-
-            const startIndex = (currentPage - 1) * keysPerPage;
-            const endIndex = startIndex + keysPerPage;
-            const keysToShow = keysData.slice(startIndex, endIndex);
-
-            if (keysToShow.length === 0 && keysData.length > 0) {
-                // This case should be handled by adjusting currentPage before calling this function
-                // For safety, if it happens, log it.
-                console.warn(`RenderKeysTable called for ${tableId} with empty keysToShow but keysData is not empty. CurrentPage: ${currentPage}`);
-                // We might need to adjust currentPage here if it's out of bounds.
-                // For now, it will show "暂无 Key" if keysToShow is empty.
-            }
             
-            if (keysToShow.length === 0) {
+            if (keysData.length === 0) {
                 const row = tbody.insertRow();
                 const cell = row.insertCell();
                 cell.colSpan = 7; // Masked Key, Name, Status, Total Calls, Last Used, Created At, Actions
                 cell.textContent = `暂无${keyType} Key。`;
-            } else {
-                keysToShow.forEach(key => {
-                    const row = tbody.insertRow();
-                    // row.insertCell().textContent = key.id; // ID 列已移除
-                    row.insertCell().textContent = key.api_key_masked || 'N/A';
-                    row.insertCell().textContent = key.name || 'N/A';
-                    
-                    const statusCell = row.insertCell();
-                    statusCell.textContent = key.status;
-                    statusCell.className = key.status === 'active' ? 'status-active' : (key.status === 'inactive' ? 'status-inactive' : 'status-revoked');
-                    
-                    row.insertCell().textContent = key.total_requests !== undefined ? key.total_requests : 'N/A';
-                    row.insertCell().textContent = formatDateTime(key.last_used_at);
-                    row.insertCell().textContent = formatDateTime(key.created_at);
-
-                    const actionsCell = row.insertCell();
-                    actionsCell.className = 'actions';
-                    
-                    const toggleStatusButton = document.createElement('button');
-                    let newStatus, buttonText;
-                    if (key.status === 'active') {
-                        newStatus = 'inactive';
-                        buttonText = '设为 Inactive';
-                    } else if (key.status === 'inactive') {
-                        newStatus = 'active';
-                        buttonText = '设为 Active';
-                    } else { // e.g. 'revoked'
-                        newStatus = 'active'; // Or 'inactive', depending on desired behavior for revoked keys
-                        buttonText = '尝试设为 Active'; // Or a different text
-                    }
-                    toggleStatusButton.textContent = buttonText;
-                    toggleStatusButton.onclick = () => toggleKeyStatus(key.id, newStatus);
-                    actionsCell.appendChild(toggleStatusButton);
-
-                    const editNameButton = document.createElement('button');
-                    editNameButton.textContent = '改名';
-                    editNameButton.onclick = () => promptEditKeyName(key.id, key.name || '');
-                    actionsCell.appendChild(editNameButton);
-
-                    const deleteButton = document.createElement('button');
-                    deleteButton.textContent = '删除';
-                    deleteButton.classList.add('delete-btn');
-                    deleteButton.onclick = () => deleteOpenAiKey(key.id, key.api_key_masked);
-                    actionsCell.appendChild(deleteButton);
-                });
+                return;
             }
-            renderPaginationControls(keysData.length, currentPage, keysPerPage, paginationContainerId, keyType);
+            
+            keysData.forEach(key => {
+                const row = tbody.insertRow();
+                row.insertCell().textContent = key.api_key_masked || 'N/A';
+                row.insertCell().textContent = key.name || 'N/A';
+                
+                const statusCell = row.insertCell();
+                statusCell.textContent = key.status;
+                statusCell.className = key.status === 'active' ? 'status-active' : (key.status === 'inactive' ? 'status-inactive' : 'status-revoked');
+                
+                row.insertCell().textContent = key.total_requests !== undefined ? key.total_requests : 'N/A';
+                row.insertCell().textContent = formatDateTime(key.last_used_at);
+                row.insertCell().textContent = formatDateTime(key.created_at);
+
+                const actionsCell = row.insertCell();
+                actionsCell.className = 'actions';
+                
+                const toggleStatusButton = document.createElement('button');
+                let newStatus, buttonText;
+                if (key.status === 'active') {
+                    newStatus = 'inactive';
+                    buttonText = '设为 Inactive';
+                } else if (key.status === 'inactive') {
+                    newStatus = 'active';
+                    buttonText = '设为 Active';
+                } else { // e.g. 'revoked'
+                    newStatus = 'active'; // Or 'inactive', depending on desired behavior for revoked keys
+                    buttonText = '尝试设为 Active'; // Or a different text
+                }
+                toggleStatusButton.textContent = buttonText;
+                toggleStatusButton.onclick = () => toggleKeyStatus(key.id, newStatus);
+                actionsCell.appendChild(toggleStatusButton);
+
+                const editNameButton = document.createElement('button');
+                editNameButton.textContent = '改名';
+                editNameButton.onclick = () => promptEditKeyName(key.id, key.name || '');
+                actionsCell.appendChild(editNameButton);
+
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = '删除';
+                deleteButton.classList.add('delete-btn');
+                deleteButton.onclick = () => deleteOpenAiKey(key.id, key.api_key_masked);
+                actionsCell.appendChild(deleteButton);
+            });
         }
 
-        function renderPaginationControls(totalItems, currentPage, itemsPerPage, containerId, keyType) {
-            const paginationContainer = document.getElementById(containerId);
+        function renderPaginationControls(paginationId, currentPage, totalPages, pageSize, totalCount, loadFunction) {
+            const paginationContainer = document.getElementById(paginationId);
             paginationContainer.innerHTML = '';
-
-            const totalPages = Math.ceil(totalItems / itemsPerPage);
 
             if (totalPages <= 1) {
                 return;
             }
 
+            // 首页按钮
+            const firstButton = document.createElement('button');
+            firstButton.textContent = '首页';
+            firstButton.disabled = currentPage === 1;
+            firstButton.onclick = () => loadFunction(1, pageSize);
+            paginationContainer.appendChild(firstButton);
+
+            // 上一页按钮
             const prevButton = document.createElement('button');
             prevButton.textContent = '上一页';
             prevButton.disabled = currentPage === 1;
-            prevButton.onclick = () => {
-                if (currentPage > 1) {
-                    if (keyType === 'valid') {
-                        currentValidKeyPage--;
-                        renderKeysTable(validKeysData, 'validKeysTable', 'validKeysPagination', currentValidKeyPage, KEYS_PER_PAGE, 'valid');
-                    } else if (keyType === 'invalid') {
-                        currentInvalidKeyPage--;
-                        renderKeysTable(invalidKeysData, 'invalidKeysTable', 'invalidKeysPagination', currentInvalidKeyPage, KEYS_PER_PAGE, 'invalid');
-                    }
-                }
-            };
+            prevButton.onclick = () => loadFunction(currentPage - 1, pageSize);
             paginationContainer.appendChild(prevButton);
 
+            // 页码信息
             const pageInfo = document.createElement('span');
             pageInfo.className = 'page-info';
-            pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页`;
+            pageInfo.textContent = `第 ${currentPage} / ${totalPages} 页 (共 ${totalCount} 条)`;
             paginationContainer.appendChild(pageInfo);
 
+            // 下一页按钮
             const nextButton = document.createElement('button');
             nextButton.textContent = '下一页';
             nextButton.disabled = currentPage === totalPages;
-            nextButton.onclick = () => {
-                if (currentPage < totalPages) {
-                     if (keyType === 'valid') {
-                        currentValidKeyPage++;
-                        renderKeysTable(validKeysData, 'validKeysTable', 'validKeysPagination', currentValidKeyPage, KEYS_PER_PAGE, 'valid');
-                    } else if (keyType === 'invalid') {
-                        currentInvalidKeyPage++;
-                        renderKeysTable(invalidKeysData, 'invalidKeysTable', 'invalidKeysPagination', currentInvalidKeyPage, KEYS_PER_PAGE, 'invalid');
-                    }
-                }
-            };
+            nextButton.onclick = () => loadFunction(currentPage + 1, pageSize);
             paginationContainer.appendChild(nextButton);
+
+            // 末页按钮
+            const lastButton = document.createElement('button');
+            lastButton.textContent = '末页';
+            lastButton.disabled = currentPage === totalPages;
+            lastButton.onclick = () => loadFunction(totalPages, pageSize);
+            paginationContainer.appendChild(lastButton);
         }
         
         async function promptEditKeyName(keyId, currentName) {
@@ -373,7 +366,10 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
                 try {
                     const result = await apiRequest(`/keys/${keyId}/name`, 'PUT', { name: newName.trim() });
                     if (result) {
-                        loadKeyPool(); // Reload all keys to reflect the name change
+                        // 刷新统计信息和列表
+                        await loadKeyPoolSummary();
+                        await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
+                        await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                     }
                 } catch (error) {
                     showKeyManagementError(`更新 Key 名称失败: ${error.message}`);
@@ -383,55 +379,121 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
         }
 
-        async function loadKeyPool() {
+        // 加载Key池统计信息
+        async function loadKeyPoolSummary() {
             try {
-                const categorizedKeys = await apiRequest('/keys'); // Expects { valid_keys: [], invalid_keys: [] }
+                // 使用旧接口获取统计数据
+                const categorizedKeys = await apiRequest('/keys');
                 if (!categorizedKeys || typeof categorizedKeys.valid_keys === 'undefined' || typeof categorizedKeys.invalid_keys === 'undefined') {
-                    showKeyManagementError('加载 Key 池失败：返回数据格式不正确。');
-                    validKeysData = [];
-                    invalidKeysData = [];
-                } else {
-                    validKeysData = categorizedKeys.valid_keys;
-                    invalidKeysData = categorizedKeys.invalid_keys;
+                    showKeyManagementError('加载 Key 池统计失败：返回数据格式不正确。');
+                    return;
                 }
 
-                const totalKeys = validKeysData.length + invalidKeysData.length;
-                const keyStatsEl = document.getElementById('keyStats');
-                keyStatsEl.innerHTML = `总 Key 数量: <strong>${totalKeys}</strong> (有效: <strong class="status-active">${validKeysData.length}</strong>, 无效: <strong class="status-inactive">${invalidKeysData.length}</strong>)`;
+                const totalValidKeys = categorizedKeys.valid_keys.length;
+                const totalInvalidKeys = categorizedKeys.invalid_keys.length;
+                const totalKeys = totalValidKeys + totalInvalidKeys;
                 
-                // Adjust current page if it's out of bounds for valid keys
-                let totalValidPages = Math.ceil(validKeysData.length / KEYS_PER_PAGE);
-                if (currentValidKeyPage > totalValidPages && totalValidPages > 0) {
-                    currentValidKeyPage = totalValidPages;
-                } else if (totalValidPages === 0) {
-                    currentValidKeyPage = 1;
-                }
-
-                // Adjust current page if it's out of bounds for invalid keys
-                let totalInvalidPages = Math.ceil(invalidKeysData.length / KEYS_PER_PAGE);
-                if (currentInvalidKeyPage > totalInvalidPages && totalInvalidPages > 0) {
-                    currentInvalidKeyPage = totalInvalidPages;
-                } else if (totalInvalidPages === 0) {
-                    currentInvalidKeyPage = 1;
-                }
-
-                renderKeysTable(validKeysData, 'validKeysTable', 'validKeysPagination', currentValidKeyPage, KEYS_PER_PAGE, 'valid');
-                renderKeysTable(invalidKeysData, 'invalidKeysTable', 'invalidKeysPagination', currentInvalidKeyPage, KEYS_PER_PAGE, 'invalid');
+                const keyStatsEl = document.getElementById('keyStats');
+                keyStatsEl.innerHTML = `总 Key 数量: <strong>${totalKeys}</strong> (有效: <strong class="status-active">${totalValidKeys}</strong>, 无效: <strong class="status-inactive">${totalInvalidKeys}</strong>)`;
                 
                 document.getElementById('keyManagementError').classList.add('hidden');
             } catch (error) {
-                showKeyManagementError(`加载 Key 池失败: ${error.message}`);
+                showKeyManagementError(`加载 Key 池统计失败: ${error.message}`);
                 const keyStatsEl = document.getElementById('keyStats');
                 keyStatsEl.innerHTML = `<span class="error-message">无法加载 Key 统计信息。</span>`;
-                validKeysData = [];
-                invalidKeysData = [];
-                renderKeysTable(validKeysData, 'validKeysTable', 'validKeysPagination', 1, KEYS_PER_PAGE, 'valid');
-                renderKeysTable(invalidKeysData, 'invalidKeysTable', 'invalidKeysPagination', 1, KEYS_PER_PAGE, 'invalid');
             }
         }
 
+        // 加载有效的Keys（使用分页API）
+        async function loadValidKeys(page, pageSize) {
+            try {
+                const endpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=active`;
+                const response = await apiRequest(endpoint);
+                
+                if (!response || !response.items || !response.page_info) {
+                    showKeyManagementError('加载有效Key失败：返回数据格式不正确。');
+                    validKeysData = [];
+                    renderTable(validKeysData, 'validKeysTable', 'valid');
+                    return;
+                }
+                
+                validKeysData = response.items;
+                validKeysCurrentPage = response.page_info.page;
+                validKeysTotalPages = response.page_info.total_pages;
+                validKeysTotalCount = response.page_info.total;
+                validKeysPageSize = response.page_info.page_size;
+                
+                renderTable(validKeysData, 'validKeysTable', 'valid');
+                renderPaginationControls(
+                    'validKeysPagination', 
+                    validKeysCurrentPage, 
+                    validKeysTotalPages, 
+                    validKeysPageSize, 
+                    validKeysTotalCount, 
+                    loadValidKeys
+                );
+            } catch (error) {
+                showKeyManagementError(`加载有效Key失败: ${error.message}`);
+                validKeysData = [];
+                renderTable(validKeysData, 'validKeysTable', 'valid');
+            }
+        }
+
+        // 加载无效的Keys（使用分页API）
+        async function loadInvalidKeys(page, pageSize) {
+            try {
+                // 无效Key包括inactive和revoked状态，需要多次请求后合并
+                // 先获取inactive状态的keys
+                const inactiveEndpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=inactive`;
+                const inactiveResponse = await apiRequest(inactiveEndpoint);
+                
+                // 可选：获取revoked状态的keys
+                // const revokedEndpoint = `/keys/paginated?page=${page}&page_size=${pageSize}&status=revoked`;
+                // const revokedResponse = await apiRequest(revokedEndpoint);
+                
+                if (!inactiveResponse || !inactiveResponse.items || !inactiveResponse.page_info) {
+                    showKeyManagementError('加载无效Key失败：返回数据格式不正确。');
+                    invalidKeysData = [];
+                    renderTable(invalidKeysData, 'invalidKeysTable', 'invalid');
+                    return;
+                }
+                
+                invalidKeysData = inactiveResponse.items;
+                invalidKeysCurrentPage = inactiveResponse.page_info.page;
+                invalidKeysTotalPages = inactiveResponse.page_info.total_pages;
+                invalidKeysTotalCount = inactiveResponse.page_info.total;
+                invalidKeysPageSize = inactiveResponse.page_info.page_size;
+                
+                renderTable(invalidKeysData, 'invalidKeysTable', 'invalid');
+                renderPaginationControls(
+                    'invalidKeysPagination', 
+                    invalidKeysCurrentPage, 
+                    invalidKeysTotalPages, 
+                    invalidKeysPageSize, 
+                    invalidKeysTotalCount, 
+                    loadInvalidKeys
+                );
+            } catch (error) {
+                showKeyManagementError(`加载无效Key失败: ${error.message}`);
+                invalidKeysData = [];
+                renderTable(invalidKeysData, 'invalidKeysTable', 'invalid');
+            }
+        }
+
+        // 更改有效Keys每页显示数量
+        function changeValidKeysPageSize(newSize) {
+            validKeysPageSize = parseInt(newSize);
+            loadValidKeys(1, validKeysPageSize);
+        }
+
+        // 更改无效Keys每页显示数量
+        function changeInvalidKeysPageSize(newSize) {
+            invalidKeysPageSize = parseInt(newSize);
+            loadInvalidKeys(1, invalidKeysPageSize);
+        }
+
         async function addOpenAiKeys() {
-            const newKeysInput = document.getElementById('newOpenAiKeys'); // Changed ID
+            const newKeysInput = document.getElementById('newOpenAiKeys');
             const keysString = newKeysInput.value.trim();
             if (!keysString) {
                 showKeyManagementError('请输入 OpenAI API Key。');
@@ -459,11 +521,15 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             document.getElementById('loading').classList.remove('hidden');
             
             try {
-                // 使用新的批量添加API
+                // 使用批量添加API
                 const result = await apiRequest('/keys/bulk', 'POST', { api_keys: keysString });
                 document.getElementById('loading').classList.add('hidden');
                 newKeysInput.value = ''; // Clear textarea
-                loadKeyPool(); // Reload list
+                
+                // 刷新统计信息和列表
+                await loadKeyPoolSummary();
+                await loadValidKeys(1, validKeysPageSize);
+                await loadInvalidKeys(1, invalidKeysPageSize);
 
                 if (result.error_count > 0) {
                     const errorDetails = result.results
@@ -481,14 +547,17 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             }
         }
 
-        async function deleteOpenAiKey(keyId, displayKey) { // Changed maskedKey to displayKey for clarity
-            if (!confirm(`确定要删除 Key "${displayKey}" 吗？`)) { // Corrected to use displayKey
+        async function deleteOpenAiKey(keyId, displayKey) {
+            if (!confirm(`确定要删除 Key "${displayKey}" 吗？`)) {
                 return;
             }
             try {
                 const result = await apiRequest(`/keys/${keyId}`, 'DELETE');
                 if (result) {
-                    loadKeyPool(); // 重新加载列表
+                    // 刷新统计信息和列表
+                    await loadKeyPoolSummary();
+                    await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
+                    await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                 }
             } catch (error) {
                 showKeyManagementError(`删除 Key 失败: ${error.message}`);
@@ -499,7 +568,10 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             try {
                 const result = await apiRequest(`/keys/${keyId}/status`, 'PUT', { status: newStatus });
                 if (result) {
-                    loadKeyPool(); // 重新加载列表
+                    // 刷新统计信息和列表
+                    await loadKeyPoolSummary();
+                    await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
+                    await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
                 }
             } catch (error) {
                 showKeyManagementError(`更新 Key 状态失败: ${error.message}`);
@@ -514,8 +586,11 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
             try {
                 const result = await apiRequest('/validate_keys', 'POST');
                 if (result) {
-                    alert('Key 验证请求已发送。请稍后刷新查看最新状态。'); // 或者可以设计成轮询结果
-                    loadKeyPool(); // 重新加载 Key 列表以反映可能的状态变化
+                    alert('Key 验证请求已发送。请稍后刷新查看最新状态。');
+                    // 刷新统计信息和列表
+                    await loadKeyPoolSummary();
+                    await loadValidKeys(1, validKeysPageSize);
+                    await loadInvalidKeys(1, invalidKeysPageSize);
                 }
             } catch (error) {
                 showKeyManagementError(`触发 Key 验证失败: ${error.message}`);
@@ -572,8 +647,3 @@ const API_BASE_URL = '/admin'; // 后端 API 的基础路径
                 document.getElementById('totalKeysCount').textContent = '错误';
             }
         }
-
-        // 初始时不加载数据，等待用户输入代理 API Key
-        // window.onload = () => {
-        //     // 页面加载时不自动执行，等待用户验证
-        // };

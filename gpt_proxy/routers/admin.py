@@ -192,6 +192,39 @@ async def get_all_openai_keys_endpoint():
     return schemas.CategorizedOpenAIKeys(valid_keys=valid_keys, invalid_keys=invalid_keys)
 
 
+@router.get("/keys/paginated", response_model=schemas.PaginatedOpenAIKeys)
+async def get_paginated_openai_keys_endpoint(page_params: schemas.PageParams = Depends()):
+    """获取分页的API Keys列表。"""
+    keys_data, total_count = db.get_api_keys_paginated(
+        page=page_params.page, 
+        page_size=page_params.page_size,
+        status=page_params.status
+    )
+    
+    items = []
+    for key_data in keys_data:
+        items.append(schemas.OpenAIKeyDisplay(
+            id=key_data["id"],
+            api_key_masked=utils.mask_api_key_for_display(key_data["api_key"]),
+            status=key_data["status"],
+            name=key_data.get("name"),
+            created_at=key_data.get("created_at"),
+            last_used_at=key_data.get("last_used_at"),
+            total_requests=key_data.get("total_requests", 0),
+        ))
+    
+    total_pages = (total_count + page_params.page_size - 1) // page_params.page_size
+    
+    page_info = schemas.PageInfo(
+        total=total_count,
+        page=page_params.page,
+        page_size=page_params.page_size,
+        total_pages=total_pages
+    )
+    
+    return schemas.PaginatedOpenAIKeys(items=items, page_info=page_info)
+
+
 @router.post("/keys", response_model=schemas.OpenAIKeyDisplay, status_code=201)
 async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
     new_key_value = payload.api_key.strip()

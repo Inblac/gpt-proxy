@@ -98,6 +98,49 @@ def get_all_api_keys() -> List[Dict[str, Any]]:
     return [item for item in (_row_to_dict(row) for row in keys_data) if item is not None]
 
 
+def get_api_keys_paginated(page: int = 1, page_size: int = 10, status: Optional[str] = None) -> tuple[List[Dict[str, Any]], int]:
+    """获取分页的 API Keys。
+    
+    Args:
+        page: 页码，从1开始
+        page_size: 每页数量
+        status: 可选的状态过滤，如'active', 'inactive', 'revoked'
+        
+    Returns:
+        包含两个元素的元组：(分页后的keys列表, 总记录数)
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 计算总记录数
+    count_sql = "SELECT COUNT(*) FROM openai_keys"
+    params = []
+    
+    if status:
+        count_sql += " WHERE status = ?"
+        params.append(status)
+    
+    cursor.execute(count_sql, params)
+    total_count = cursor.fetchone()[0]
+    
+    # 查询分页数据
+    sql = "SELECT * FROM openai_keys"
+    if status:
+        sql += " WHERE status = ?"
+    
+    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    
+    offset = (page - 1) * page_size
+    params.append(page_size)
+    params.append(offset)
+    
+    cursor.execute(sql, params)
+    keys_data = cursor.fetchall()
+    conn.close()
+    
+    return [item for item in (_row_to_dict(row) for row in keys_data) if item is not None], total_count
+
+
 def get_active_api_keys() -> List[Dict[str, Any]]:
     """获取所有状态为 'active' 的 API Keys。"""
     conn = get_db_connection()
