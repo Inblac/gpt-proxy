@@ -47,21 +47,44 @@
    pip install -r requirements.txt
    ```
 
-3. 配置config.ini
-   ```
-   api_keys=your_admin_key_here
-   # 其他必要的参数...
+3. 创建 data 目录并配置 config.ini
+   ```bash
+   mkdir data
+   cp config.ini.example data/config.ini
+   # 按需编辑 data/config.ini
    ```
 
-4. 初始化数据库
+4. 初始化数据库（将在 ./data/gpt_proxy.db 生成）
    ```bash
    python -m gpt_proxy.database.init_db
+   # 如果不存在会自动创建 data/gpt_proxy.db
    ```
 
 5. 启动服务
    ```bash
    uvicorn gpt_proxy.main:app --host 0.0.0.0 --port 8000
    ```
+
+### Docker & Docker Compose
+
+- `config.ini` 和 `gpt_proxy.db` 必须都放在项目根目录下的 `./data` 目录。
+- 使用 Docker 或 docker-compose 时，需将宿主机的 `./data` 目录挂载到容器的 `/data` 目录：
+
+```yaml
+docker-compose.yml 示例：
+
+version: '3.8'
+services:
+  gpt-proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+```
+
+这样所有配置和数据都能持久化且易于管理。
 
 ## 使用说明
 

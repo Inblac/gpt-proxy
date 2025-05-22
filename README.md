@@ -47,21 +47,44 @@ A simple OpenAI API key management platform for efficiently managing and optimiz
    pip install -r requirements.txt
    ```
 
-3. Configure config.ini
-   ```
-   api_keys=your_admin_key_here
-   # Other necessary parameters...
+3. Create a data directory and configure config.ini
+   ```bash
+   mkdir data
+   cp config.ini.example data/config.ini
+   # Edit data/config.ini as needed
    ```
 
-4. Initialize the database
+4. Initialize the database (will be created as ./data/gpt_proxy.db)
    ```bash
    python -m gpt_proxy.database.init_db
+   # This will create data/gpt_proxy.db if it does not exist
    ```
 
 5. Start the service
    ```bash
    uvicorn gpt_proxy.main:app --host 0.0.0.0 --port 8000
    ```
+
+### Docker & Docker Compose
+
+- Both `config.ini` and `gpt_proxy.db` must be placed in the `./data` directory.
+- When using Docker or docker-compose, mount the host's `./data` directory to the container's `/data` directory:
+
+```yaml
+docker-compose.yml example:
+
+version: '3.8'
+services:
+  gpt-proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+```
+
+This ensures all configuration and data are persistent and easy to manage.
 
 ## Usage Instructions
 

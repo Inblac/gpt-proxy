@@ -2,8 +2,9 @@ import sqlite3
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+import os
 
-DATABASE_NAME = "gpt_proxy.db"
+DATABASE_NAME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "gpt_proxy.db")
 
 
 def get_db_connection():

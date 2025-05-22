@@ -29,7 +29,7 @@ USAGE_WINDOW_SECONDS: int = 3600  # 默认值 (1 小时)
 
 # 配置文件路径
 # 假设 config.ini 文件位于 'gpt_proxy' 包的父目录中
-CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.ini")
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.ini")
 
 
 def load_app_config():
