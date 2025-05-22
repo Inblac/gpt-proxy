@@ -8,22 +8,18 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException
 
 from . import database as db
-from . import config  # 用于 JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+from . import config
 from . import logger
 
-# --- API 密钥轮换和使用情况跟踪的全局状态 ---
+# API密钥轮换和使用情况跟踪的全局状态
 _active_key_configs_cycle = itertools.cycle([])
 api_key_usage: Dict[str, Deque[datetime]] = {}
 MAX_TIMESTAMPS_PER_KEY = 10000
 USAGE_WINDOW_SECONDS = 24 * 60 * 60
-# MAX_RETRIES 现在在 config.py (APP_CONFIG_MAX_RETRIES) 中配置，并从 config.ini 读取
 
 
 def update_openai_key_cycle() -> int:
-    """
-    从数据库更新活动的 OpenAI API 密钥循环。
-    返回找到的活动密钥数量。
-    """
+    """从数据库更新活动的OpenAI API密钥循环，返回找到的活动密钥数量"""
     global _active_key_configs_cycle
     active_keys = db.get_active_api_keys()
     active_key_count = len(active_keys)
@@ -38,35 +34,30 @@ def update_openai_key_cycle() -> int:
 
 
 def get_next_openai_key_config() -> Optional[Dict[str, Any]]:
-    """
-    从循环中获取下一个可用的 OpenAI API 密钥配置。
-    如果 API 密钥池为空，则返回 None。
-    尝试从数据库刷新一次，以防密钥池在初始加载后发生变化。
-    """
-    # 在 API 密钥循环为空的情况下，尝试从数据库刷新。
+    """获取下一个可用的OpenAI API密钥配置，无可用密钥时返回None"""
+    # 在API密钥循环为空的情况下，尝试从数据库刷新
     active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
     if not active_key_configs:
-        logger.warning("API 密钥循环为空。正在尝试刷新。")
+        logger.warning("API密钥循环为空。正在尝试刷新。")
         active_key_count = update_openai_key_cycle()
         if active_key_count > 0:
             # 尝试再次获取密钥
             active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
 
     if not active_key_configs:
-        # 如果刷新后循环仍然为空，则日志记录并返回 None
-        logger.warning("API 密钥循环在刷新后立即变空。")
+        logger.warning("API密钥循环在刷新后立即变空。")
         return None
 
-    # 返回循环中的下一个 API 密钥配置
+    # 返回循环中的下一个API密钥配置
     try:
         return active_key_configs[0]
     except IndexError:
-        logger.error("即使刷新后也没有找到活动的 OpenAI API 密钥。")
+        logger.error("即使刷新后也没有找到活动的OpenAI API密钥。")
         return None
 
 
 def record_api_key_usage(key_id: str):
-    """记录 API Key (identified by key_id) 的使用时间戳，并清理旧记录。"""
+    """记录API Key使用时间戳，并清理旧记录"""
     now = datetime.utcnow()
     if key_id not in api_key_usage:
         api_key_usage[key_id] = deque()
@@ -83,14 +74,10 @@ def record_api_key_usage(key_id: str):
 
 def mask_api_key_for_display(api_key: str) -> str:
     """
-    将 API 密钥遮罩以便显示，固定长度为10个字符。
-    - 对于 "sk-" 类型的密钥 (例如："sk-xxxxxxxxxxxxABCD"):
-        - 如果足够长 (>= 7 个字符): "sk-...ABCD"
-        - 如果较短: "sk-...[剩余部分]" 填充到10个字符，例如："sk-...123 "
-    - 对于其他类型的密钥 (例如："MYKEYISTHIS"):
-        - 如果足够长 (>= 7 个字符): "MYK...THIS"
-        - 如果较短 (1-6 个字符): "M...S" (首字符...末字符) 或 "M..." (如果长度为1), 填充到10个字符。
-    - 对于 None 或空密钥，返回 "N/A       "。
+    将API密钥遮罩以便显示，固定长度为10个字符。
+    - 对于"sk-"类型密钥: "sk-...ABCD"
+    - 对于其他类型密钥: "MYK...THIS"
+    - 对于None或空密钥，返回"N/A"
     """
     target_len = 10
     placeholder = "..."
@@ -102,41 +89,35 @@ def mask_api_key_for_display(api_key: str) -> str:
 
     if api_key.startswith("sk-"):
         prefix = "sk-"
-        # 需要 3 (前缀) + 3 (占位符) + 4 (后缀) = 10
-        if key_len >= (len(prefix) + 4):  # 例如："sk-1234" (长度=7)
+        if key_len >= (len(prefix) + 4):
             suffix = api_key[-4:]
             return f"{prefix}{placeholder}{suffix}"
-        else:  # 比 "sk-XXXX" 短
-            rest_of_key = api_key[len(prefix) :]
+        else:
+            rest_of_key = api_key[len(prefix):]
             masked_key = f"{prefix}{placeholder}{rest_of_key}"
             return masked_key.ljust(target_len)
-    else:  # 非 "sk-"
-        # 需要 3 (前缀) + 3 (占位符) + 4 (后缀) = 10
-        if key_len >= 7:  # 允许前缀3个字符，后缀4个字符
+    else:
+        if key_len >= 7:
             prefix = api_key[:3]
             suffix = api_key[-4:]
             return f"{prefix}{placeholder}{suffix}"
-        else:  # 短于7个字符 (长度 0 到 6)
-            if key_len == 0:  # 应该在第一个检查中被捕获
+        else:
+            if key_len == 0:
                 return "N/A".ljust(target_len)
             if key_len == 1:
-                masked_key = f"{api_key[0]}{placeholder}"  # 例如："1..."
-            else:  # 长度 2 到 6
-                masked_key = f"{api_key[0]}{placeholder}{api_key[-1]}"  # 例如："1...6"
+                masked_key = f"{api_key[0]}{placeholder}"
+            else:
+                masked_key = f"{api_key[0]}{placeholder}{api_key[-1]}"
             return masked_key.ljust(target_len)
 
 
-# 导入此模块时初始化密钥循环。
-# main.py 中的 FastAPI 启动事件也会调用此函数，
-# 确保在应用程序开始处理请求时它是最新的。
+# 初始化密钥循环
 update_openai_key_cycle()
 
 
-# --- JWT 令牌工具 ---
+# JWT令牌工具
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """
-    创建一个新的 JWT 访问令牌。
-    """
+    """创建新的JWT访问令牌"""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -145,8 +126,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.update({"exp": expire})
 
     if not config.JWT_SECRET_KEY:
-        # 如果配置加载稳健，理想情况下不应发生这种情况
-        raise ValueError("JWT_SECRET_KEY 未设置。无法创建令牌。")
+        raise ValueError("JWT_SECRET_KEY未设置。无法创建令牌。")
 
     encoded_jwt = jwt.encode(to_encode, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
     return encoded_jwt
