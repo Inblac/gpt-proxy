@@ -107,6 +107,21 @@ class ResetKeysResponse(BaseModel):
     count: int
 
 
+class APIKeysBulkCreate(BaseModel):
+    """批量添加API密钥的请求模型"""
+    keys: str  # 包含多个key的字符串，每行一个key
+
+
+class APIKeyStatusUpdate(BaseModel):
+    """更新API密钥状态的请求模型"""
+    status: str
+
+
+class APIKeyNameUpdate(BaseModel):
+    """更新API密钥名称的请求模型"""
+    name: str
+
+
 class GlobalStats(BaseModel):
     grand_total_requests_all_time: int
     grand_total_usage_last_1m: int

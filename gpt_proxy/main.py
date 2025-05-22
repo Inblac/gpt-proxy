@@ -13,6 +13,7 @@ from . import config
 from . import dependencies
 from . import utils
 from .routers import chat, admin
+from . import logger
 
 
 # --- 应用设置 ---
@@ -46,67 +47,67 @@ async def get_admin_page_html(
 
 
 # 将 /admin/token 端点从 routers.admin 移至 main.py 以避免路由级别的认证依赖
-@app.post("/token", response_model=schemas.Token, tags=["Admin Auth"])
-async def login_for_access_token_main(request: Request):  # 重命名以避免在 admin 路由仍然导入时发生冲突
+@app.post("/admin/token", response_model=schemas.Token, tags=["Authentication"])
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """
-    管理员使用代理 API 密钥作为密码登录。
-    返回一个 JWT 访问令牌。
-    在 main.py 中定义以绕过 admin 路由的默认 JWT 保护。
+    管理员登录用于获取 JWT 令牌的端点。
+    基于代理 API Key（在 config.ini 的 [proxy_auth] 部分的 api_keys 中配置）进行验证。
     """
-    print("DEBUG (main.py): /token endpoint CALLED!")  # 调试信息：/token 端点被调用！
-
-    proxy_api_key_candidate: Optional[str] = None
+    logger.debug("DEBUG (main.py): /token endpoint CALLED!")  # 调试信息：/token 端点被调用！
+    
+    # 用于调试日志
     try:
-        form_data = await request.form()
-        print(f"DEBUG (main.py): Raw form data received: {form_data}")  # 调试信息：接收到原始表单数据
-
-        raw_password_field = form_data.get("password")
-        if isinstance(raw_password_field, str):
-            proxy_api_key_candidate = raw_password_field
-            print(
-                f"DEBUG (main.py): Extracted password/key candidate: '{proxy_api_key_candidate}'"
-            )  # 调试信息：提取的密码/密钥候选者
-        elif raw_password_field is None:
-            print(
-                "DEBUG (main.py): 'password' field not found in form data."
-            )  # 调试信息：在表单数据中未找到 'password' 字段
-            raise HTTPException(status_code=400, detail="Missing 'password' in form data")
-        else:
-            print(
-                f"DEBUG (main.py): 'password' field was not a string. Type: {type(raw_password_field)}, Value: {raw_password_field}"
-            )  # 调试信息：'password' 字段不是字符串
-            raise HTTPException(status_code=400, detail="'password' field must be a string.")
-
+        logger.debug(f"DEBUG (main.py): Raw form data received: {form_data}")  # 调试信息：接收到原始表单数据
     except Exception as e:
-        print(f"DEBUG (main.py): Error processing request form data: {e}")  # 调试信息：处理请求表单数据时出错
-        raise HTTPException(status_code=400, detail=f"Could not process form data: {e}")
+        logger.error(f"DEBUG (main.py): Could not log form_data: {e}")  # 调试信息：无法记录 form_data
 
-    if proxy_api_key_candidate is None:
-        print(
-            "DEBUG (main.py): proxy_api_key_candidate is None after form processing."
-        )  # 调试信息：表单处理后 proxy_api_key_candidate 为 None
-        raise HTTPException(status_code=400, detail="Password not provided or error in processing.")
-
-    print(
-        f"DEBUG (main.py): Current config.PROXY_API_KEYS: {config.PROXY_API_KEYS}"
-    )  # 调试信息：当前的 config.PROXY_API_KEYS
-
-    if proxy_api_key_candidate not in config.PROXY_API_KEYS:
-        print(
-            f"DEBUG (main.py): Authentication failed. Candidate '{proxy_api_key_candidate}' not in {config.PROXY_API_KEYS}"
-        )  # 调试信息：认证失败
+    try:
+        username = form_data.username
+        password = form_data.password
+        
+        logger.debug(f"DEBUG (main.py): Attempted login with username: {username}")  # 调试信息：尝试使用用户名登录
+        
+        if password not in config.PROXY_API_KEYS:
+            logger.warning(f"DEBUG (main.py): Invalid credentials for user: {username}")  # 调试信息：用户的凭据无效
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect username or password",  # 用户名或密码不正确
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        logger.debug(f"DEBUG (main.py): Successful login for user: {username}")  # 调试信息：用户登录成功
+        
+        # 创建 access_token（访问令牌）
+        access_token_expires = timedelta(minutes=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = utils.create_access_token(
+            data={"sub": username}, expires_delta=access_token_expires
+        )
+        
+        logger.info(f"DEBUG (main.py): Generated token for user: {username}")  # 调试信息：为用户生成令牌
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        logger.error(f"DEBUG (main.py): Error processing request form data: {e}")  # 调试信息：处理请求表单数据时出错
         raise HTTPException(
-            status_code=401,
-            detail="Incorrect proxy API key (password)",
+            status_code=500,
+            detail=f"Internal server error processing login: {str(e)}",  # 处理登录时发生内部服务器错误
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    print(
-        f"DEBUG (main.py): Authentication successful for candidate: '{proxy_api_key_candidate}'"
-    )  # 调试信息：认证成功
-    access_token_expires = timedelta(minutes=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = utils.create_access_token(data={"sub": "admin_user"}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    全局异常处理程序，用于记录未处理的异常并返回友好的错误消息。
+    """
+    logger.error(f"未处理的异常: {exc}", exc_info=True)  # 使用 exc_info=True 记录堆栈跟踪
+    
+    # 对于调试，通常希望在开发环境中看到完整错误；
+    # 在生产环境中，可能希望隐藏技术详细信息。
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器错误: {str(exc)}"}
+    )
 
 
 # 挂载静态文件目录
@@ -120,13 +121,13 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 async def startup_event():
     """应用启动：初始化数据库。"""
     # db.init_db() # 数据库现在在 database.py 导入时初始化。
-    print("Application startup: Database initialized on module import.")  # 应用启动：数据库在模块导入时初始化。
+    logger.info("Application startup: Database initialized on module import.")  # 应用启动：数据库在模块导入时初始化。
 
-    print("Application startup: Updating OpenAI key cycle from DB.")  # 应用启动：从数据库更新 OpenAI 密钥周期。
+    logger.info("Application startup: Updating OpenAI key cycle from DB.")  # 应用启动：从数据库更新 OpenAI 密钥周期。
     utils.api_key_usage.clear()  # 清除任何旧的内存中使用情况
     utils.update_openai_key_cycle()  # 从数据库填充
 
-    print(
+    logger.info(
         "Application startup: Proxy API Keys are loaded from config module on import."
     )  # 应用启动：代理 API 密钥在导入配置模块时加载。
     # load_proxy_api_keys_from_config() # 此函数现在在 config.py 导入时调用

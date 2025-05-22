@@ -12,6 +12,7 @@ from .. import config
 from .. import utils
 from .. import database as db
 from .. import dependencies
+from .. import logger
 
 router = APIRouter(
     prefix="/api",
@@ -41,58 +42,73 @@ router = APIRouter(
 # /token 端点已移至 main.py
 
 
-@router.post("/validate_keys", response_model=List[schemas.KeyValidationResult])
-async def validate_openai_keys_endpoint():  # 现在通过路由器依赖项传递 JWT 令牌
-    results: List[schemas.KeyValidationResult] = []
-    all_keys = db.get_all_api_keys()
-    inactive_keys = [key for key in all_keys if key['status'] == config.KEY_STATUS_INACTIVE]
+@router.post("/validate_keys", tags=["Admin API Keys Management"])
+async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies.get_current_admin_user)):
+    """重新验证所有标记为无效的 API Key"""
+    # 获取所有无效的密钥
+    inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]
+    logger.info(f"Attempting to validate {len(inactive_keys)} inactive keys.")
 
-    if not inactive_keys:
-        return results
-
-    print(f"Attempting to validate {len(inactive_keys)} inactive keys.")
-
+    # 使用客户端测试每个 API 密钥
+    validation_results = []
     async with httpx.AsyncClient() as client:
-        for key_data in inactive_keys:
-            key_id = key_data['id']
-            api_key_value = key_data['api_key']
-            key_suffix = utils.mask_api_key_for_display(api_key_value)
-            key_name = key_data.get("name", "N/A")
-            result = schemas.KeyValidationResult(
-                key_id=key_id,
-                key_suffix=key_suffix,
-                status_before=config.KEY_STATUS_INACTIVE,
-                status_after=config.KEY_STATUS_INACTIVE,
-                validation_success=False,
-            )
-            headers = {"Authorization": f"Bearer {api_key_value}", "Content-Type": "application/json"}
+        for key in inactive_keys:
+            key_id = key["id"]
+            key_name = key.get("name", "无名称")
+            key_value = key["api_key"]
+            key_suffix = key_value[-4:] if key_value else "N/A"  # 用于展示密钥末尾，保持隐私
             try:
-                response = await client.get(config.OPENAI_VALIDATION_ENDPOINT, headers=headers, timeout=10.0)
-                if response.status_code == 200:
+                # 调用 OpenAI 验证端点
+                resp = await client.get(
+                    config.OPENAI_VALIDATION_ENDPOINT,
+                    headers={"Authorization": f"Bearer {key_value}"},
+                    timeout=10.0,
+                )
+                if resp.status_code == 200:
+                    # 密钥有效，将其设置为活动状态
                     db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
-                    result.status_after = config.KEY_STATUS_ACTIVE
-                    result.validation_success = True
-                    print(
-                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validated successfully. Status set to '{config.KEY_STATUS_ACTIVE}'."
+                    logger.info(
+                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validated successfully. Status updated to '{config.KEY_STATUS_ACTIVE}'."
+                    )
+                    validation_results.append(
+                        {
+                            "key_id": key_id,
+                            "name": key_name,
+                            "suffix": key_suffix,
+                            "success": True,
+                            "new_status": config.KEY_STATUS_ACTIVE,
+                        }
                     )
                 else:
-                    result.error_message = f"Validation failed with status {response.status_code}: {response.text}"
-                    print(
-                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validation failed: {result.error_message}"
+                    # 密钥无效
+                    logger.warning(
+                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) validation failed with status code {resp.status_code}."
                     )
-            except httpx.RequestError as e:
-                result.error_message = f"Validation request error: {str(e)}"
-                print(f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validation request error: {e}")
-            except Exception as e_gen:
-                result.error_message = f"Unexpected error during validation: {str(e_gen)}"
-                print(
-                    f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validation unexpected error: {e_gen}"
+                    validation_results.append(
+                        {
+                            "key_id": key_id,
+                            "name": key_name,
+                            "suffix": key_suffix,
+                            "success": False,
+                            "status_code": resp.status_code,
+                            "error": f"API responded with status code {resp.status_code}",
+                        }
+                    )
+            except Exception as e:
+                logger.error(f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validation request error: {e}")
+                validation_results.append(
+                    {
+                        "key_id": key_id,
+                        "name": key_name,
+                        "suffix": key_suffix,
+                        "success": False,
+                        "error": str(e),
+                    }
                 )
 
-            results.append(result)
-
+    # 更新 OpenAI 密钥循环以反映新的有效密钥
     utils.update_openai_key_cycle()
-    return results
+    return {"message": f"验证了 {len(inactive_keys)} 个无效的密钥", "results": validation_results}
 
 
 @router.get("/stats", response_model=schemas.GlobalStatsResponse)  # 已更新响应模型
@@ -264,173 +280,145 @@ async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while adding the key: {str(e)}")
 
 
-@router.post("/keys/bulk", response_model=schemas.BulkAddKeysResponse, status_code=201)
-async def add_bulk_openai_keys_endpoint(payload: schemas.BulkOpenAIKeysPayload):
-    """批量添加OpenAI API Keys。每行一个key，使用换行分隔。"""
-    keys_string = payload.api_keys.strip()
-    keys_array = keys_string.split("\n")
-    keys_array = [key.strip() for key in keys_array if key.strip()]
-
-    if not keys_array:
-        raise HTTPException(status_code=400, detail="No valid keys provided.")
-
+@router.post("/keys/bulk", tags=["Admin API Keys Management"])
+async def create_api_keys_bulk(
+    keys: schemas.APIKeysBulkCreate, current_user: dict = Depends(dependencies.get_current_admin_user)
+):
+    """批量添加 API 密钥"""
     results = []
-    success_count = 0
-    error_count = 0
-
-    for key in keys_array:
-        result = schemas.AddKeyResult(
-            success=False,
-            key_suffix=utils.mask_api_key_for_display(key),
-        )
-
-        if not key.startswith("sk-"):
-            result.error_message = "Invalid OpenAI API Key format. Must start with 'sk-'."
-            results.append(result)
-            error_count += 1
-            continue
-
-        try:
-            existing_key = db.get_api_key_by_key_value(key)
-            if existing_key:
-                result.error_message = f"API key already exists with ID {existing_key['id']}."
-                results.append(result)
-                error_count += 1
-                continue
-
-            key_id = db.add_api_key(api_key=key, status=config.KEY_STATUS_ACTIVE)
-            result.success = True
-            result.key_id = key_id
-            success_count += 1
-        except Exception as e:
-            result.error_message = str(e)
-            error_count += 1
-        
-        results.append(result)
-
-    if success_count > 0:
-        utils.update_openai_key_cycle()
     
-    return schemas.BulkAddKeysResponse(
-        results=results,
-        success_count=success_count,
-        error_count=error_count
-    )
+    for line in keys.keys.split('\n'):
+        line = line.strip()
+        if not line:
+            continue  # 跳过空行
+        
+        parts = line.split(',', 1)  # 最多分割一次，格式：api_key 或 api_key,name
+        api_key = parts[0].strip()
+        name = parts[1].strip() if len(parts) > 1 else None
+        
+        try:
+            key_id = db.add_api_key(api_key, name=name)
+            results.append({"key": api_key[-4:], "id": key_id, "name": name, "success": True})
+        except ValueError as e:
+            logger.error(f"Error adding API key: {e}")
+            results.append({"key": api_key[-4:], "error": str(e), "success": False})
+    
+    # 更新 OpenAI 密钥循环以包含新添加的密钥
+    utils.update_openai_key_cycle()
+    return {"message": f"处理了 {len(results)} 个 API 密钥", "results": results}
 
 
-@router.delete("/keys/{key_id}", status_code=204)
-async def delete_openai_key_endpoint(key_id: str):
+@router.delete("/keys/{key_id}", tags=["Admin API Keys Management"])
+async def delete_api_key(key_id: str, current_user: dict = Depends(dependencies.get_current_admin_user)):
+    """删除 API 密钥"""
+    # 先检查密钥是否存在
     key_to_delete = db.get_api_key_by_id(key_id)
     if not key_to_delete:
         raise HTTPException(status_code=404, detail=f"API Key with ID '{key_id}' not found.")
+    
+    # 尝试删除密钥
+    success = db.delete_api_key(key_id)
+    if not success:
+        # 如果我们找到了密钥，但无法删除它，则出现了一些内部错误
+        raise HTTPException(status_code=500, detail=f"Failed to delete API Key with ID '{key_id}' from database, though it was found.")
+    
+    logger.info(f"API Key ID '{key_id}' (Name: {key_to_delete.get('name', 'N/A')}) deleted successfully.")
+    
+    # 如果密钥已在内存中跟踪使用情况，则也从中清除
+    if key_id in utils.api_key_usage:
+        del utils.api_key_usage[key_id]
+        logger.info(f"Removed usage tracking for deleted key ID '{key_id}'.")
+    
+    # 更新 OpenAI 密钥循环以反映删除的密钥
+    utils.update_openai_key_cycle()
+    return {"message": f"API Key with ID '{key_id}' deleted successfully."}
 
-    if db.delete_api_key(key_id):
-        print(f"API Key ID '{key_id}' (Name: {key_to_delete.get('name', 'N/A')}) deleted successfully.")
-        if key_id in utils.api_key_usage:
-            del utils.api_key_usage[key_id]
-            print(f"Removed usage tracking for deleted key ID '{key_id}'.")
-        utils.update_openai_key_cycle()
-        return
-    else:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete API Key with ID '{key_id}' from database, though it was found."
-        )
 
-
-@router.put("/keys/{key_id}/status", response_model=schemas.OpenAIKeyDisplay)
-async def update_openai_key_status_endpoint_admin(key_id: str, payload: schemas.KeyStatusUpdatePayload):
-    new_status = payload.status.strip().lower()
+@router.put("/keys/{key_id}/status", tags=["Admin API Keys Management"])
+async def update_api_key_status(
+    key_id: str, status_update: schemas.APIKeyStatusUpdate, current_user: dict = Depends(dependencies.get_current_admin_user)
+):
+    """更新 API 密钥状态"""
+    # 验证新状态是否有效
+    new_status = status_update.status
     if new_status not in [config.KEY_STATUS_ACTIVE, config.KEY_STATUS_INACTIVE, config.KEY_STATUS_REVOKED]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status. Must be '{config.KEY_STATUS_ACTIVE}', '{config.KEY_STATUS_INACTIVE}', or '{config.KEY_STATUS_REVOKED}'.",
-        )
-
+        raise HTTPException(status_code=400, detail=f"Invalid status: {new_status}. Must be one of: active, inactive, revoked.")
+    
+    # 先检查密钥是否存在
     key_to_update = db.get_api_key_by_id(key_id)
     if not key_to_update:
         raise HTTPException(status_code=404, detail=f"API Key with ID '{key_id}' not found.")
-
-    if db.update_api_key_status(key_id, new_status):
-        print(f"API Key ID '{key_id}' (Name: {key_to_update.get('name', 'N/A')}) status updated to '{new_status}'.")
-        utils.update_openai_key_cycle()
-
-        updated_key_data = db.get_api_key_by_id(key_id)
-        if not updated_key_data:
-            raise HTTPException(status_code=500, detail="Failed to retrieve key after status update.")
-
-        return schemas.OpenAIKeyDisplay(
-            id=updated_key_data["id"],
-            api_key_masked=utils.mask_api_key_for_display(updated_key_data["api_key"]),
-            status=updated_key_data["status"],
-            name=updated_key_data.get("name"),
-            created_at=updated_key_data.get("created_at"),
-            last_used_at=updated_key_data.get("last_used_at"),
-            total_requests=updated_key_data.get("total_requests", 0),
-        )
-    else:
-        raise HTTPException(status_code=500, detail=f"Failed to update status for API Key ID '{key_id}'.")
+    
+    # 尝试更新状态
+    success = db.update_api_key_status(key_id, new_status)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to update status for API Key with ID '{key_id}'.")
+    
+    logger.info(f"API Key ID '{key_id}' (Name: {key_to_update.get('name', 'N/A')}) status updated to '{new_status}'.")
+    
+    # 更新 OpenAI 密钥循环以反映新的状态
+    utils.update_openai_key_cycle()
+    return {"message": f"API Key with ID '{key_id}' status updated to '{new_status}'."}
 
 
-@router.put("/keys/{key_id}/name", response_model=schemas.OpenAIKeyDisplay)
-async def update_openai_key_name_endpoint_admin(key_id: str, payload: schemas.KeyNameUpdatePayload):
-    new_name = payload.name.strip()
-    if not new_name:
-        raise HTTPException(status_code=400, detail="Key name cannot be empty.")
-
+@router.put("/keys/{key_id}/name", tags=["Admin API Keys Management"])
+async def update_api_key_name(
+    key_id: str, name_update: schemas.APIKeyNameUpdate, current_user: dict = Depends(dependencies.get_current_admin_user)
+):
+    """更新 API 密钥名称"""
+    new_name = name_update.name
+    
+    # 先检查密钥是否存在
     key_to_update = db.get_api_key_by_id(key_id)
     if not key_to_update:
         raise HTTPException(status_code=404, detail=f"API Key with ID '{key_id}' not found.")
-
-    if db.update_api_key_name(key_id, new_name):
-        print(f"API Key ID '{key_id}' (Old Name: {key_to_update.get('name', 'N/A')}) name updated to '{new_name}'.")
-
-        updated_key_data = db.get_api_key_by_id(key_id)
-        if not updated_key_data:
-            raise HTTPException(status_code=500, detail="Failed to retrieve key after name update.")
-
-        return schemas.OpenAIKeyDisplay(
-            id=updated_key_data["id"],
-            api_key_masked=utils.mask_api_key_for_display(updated_key_data["api_key"]),
-            status=updated_key_data["status"],
-            name=updated_key_data.get("name"),
-            created_at=updated_key_data.get("created_at"),
-            last_used_at=updated_key_data.get("last_used_at"),
-            total_requests=updated_key_data.get("total_requests", 0),
-        )
-    else:
-        raise HTTPException(status_code=500, detail=f"Failed to update name for API Key ID '{key_id}'.")
+    
+    # 尝试更新名称
+    success = db.update_api_key_name(key_id, new_name)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to update name for API Key with ID '{key_id}'.")
+    
+    logger.info(f"API Key ID '{key_id}' (Old Name: {key_to_update.get('name', 'N/A')}) name updated to '{new_name}'.")
+    return {"message": f"API Key with ID '{key_id}' name updated to '{new_name}'."}
 
 
-@router.post("/keys/reset_invalid_to_valid", response_model=schemas.ResetKeysResponse)
-async def reset_invalid_keys_to_valid_endpoint():
-    """
-    将所有状态为"invalid"的 API 密钥重置为"active"。
-    """
-    all_keys = db.get_all_api_keys()
-    invalid_keys = [
-        key
-        for key in all_keys
-        if key['status'] == config.KEY_STATUS_REVOKED or key['status'] == config.KEY_STATUS_INACTIVE
-    ]  # 假设 'revoked' 和 'inactive' 被视为无效状态
+@router.post("/reset_all_keys", tags=["Admin API Keys Management"])
+async def reset_all_inactive_keys_to_active(current_user: dict = Depends(dependencies.get_current_admin_user)):
+    """将所有状态为 'inactive' 的密钥重置为 'active'"""
+    inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]
+    results = []
+    
+    for key in inactive_keys:
+        key_id = key["id"]
+        try:
+            success = db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+            if success:
+                results.append({"key_id": key_id, "name": key.get("name"), "success": True})
+                logger.info(
+                    f"Reset key ID {key_id} (Name: {key.get('name', 'N/A')}) from '{config.KEY_STATUS_INACTIVE}' to '{config.KEY_STATUS_ACTIVE}'."
+                )
+            else:
+                results.append({"key_id": key_id, "name": key.get("name"), "success": False})
+                logger.warning(f"Failed to reset status for key ID {key_id}. It might have been deleted or another issue occurred.")
+        except Exception as e:
+            results.append({"key_id": key_id, "name": key.get("name"), "success": False, "error": str(e)})
+    
+    # 更新 OpenAI 密钥循环以反映新的有效密钥
+    utils.update_openai_key_cycle()
+    return {"message": f"尝试重置 {len(inactive_keys)} 个无效密钥为有效状态", "results": results}
 
-    if not invalid_keys:
-        return schemas.ResetKeysResponse(message="No invalid keys found to reset.", count=0)
 
-    reset_count = 0
-    for key_data in invalid_keys:
-        key_id = key_data['id']
-        if db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE):
-            reset_count += 1
-            print(
-                f"Key ID {key_id} (Name: {key_data.get('name', 'N/A')}) status reset to '{config.KEY_STATUS_ACTIVE}'."
-            )
-        else:
-            # 如果特定密钥更新失败，则记录错误，但继续处理其他密钥
-            print(f"Failed to reset status for key ID {key_id}. It might have been deleted or another issue occurred.")
-
-    if reset_count > 0:
-        utils.update_openai_key_cycle()  # 如果有任何密钥被更改，则更新密钥周期
-
-    return schemas.ResetKeysResponse(
-        message=f"Successfully reset {reset_count} key(s) to active status.", count=reset_count
-    )
+@router.post("/cleanup-usage", tags=["Admin API Keys Management"])
+async def cleanup_usage_tracking_data(current_user: dict = Depends(dependencies.get_current_admin_user)):
+    """清理内存中的使用情况跟踪数据，删除不再存在于数据库中的密钥的使用情况。"""
+    active_keys = {key["id"] for key in db.get_all_api_keys()}  # 现有密钥 ID 的集合
+    usage_keys = set(utils.api_key_usage.keys())  # 内存中跟踪的密钥 ID
+    
+    to_cleanup = usage_keys - active_keys  # 在使用情况中但不在数据库中的密钥
+    
+    for kid_to_clean in to_cleanup:
+        if kid_to_clean in utils.api_key_usage:
+            del utils.api_key_usage[kid_to_clean]
+            logger.info(f"Cleaned up stale usage data for deleted key_id: {kid_to_clean}")
+    
+    return {"message": f"清理了 {len(to_cleanup)} 个不存在的密钥的使用情况数据", "cleaned_key_ids": list(to_cleanup)}

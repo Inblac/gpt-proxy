@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from . import database as db
 from . import config  # 用于 JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+from . import logger
 
 # --- API 密钥轮换和使用情况跟踪的全局状态 ---
 _active_key_configs_cycle = itertools.cycle([])
@@ -29,38 +30,39 @@ def update_openai_key_cycle() -> int:
 
     if active_keys:
         _active_key_configs_cycle = itertools.cycle(active_keys)
-        print(f"Updated OpenAI key cycle. {active_key_count} active keys found.")
+        logger.info(f"Updated OpenAI key cycle. {active_key_count} active keys found.")
     else:
         _active_key_configs_cycle = itertools.cycle([])
-        print("No active OpenAI keys found in the database for the cycle.")
+        logger.warning("No active OpenAI keys found in the database for the cycle.")
     return active_key_count
 
 
-async def get_next_api_key_config() -> Optional[Dict[str, Any]]:
+def get_next_openai_key_config() -> Optional[Dict[str, Any]]:
     """
-    从循环中检索下一个活动的 API 密钥配置。
-    该循环直接包含来自数据库的字典对象。
+    从循环中获取下一个可用的 OpenAI API 密钥配置。
+    如果 API 密钥池为空，则返回 None。
+    尝试从数据库刷新一次，以防密钥池在初始加载后发生变化。
     """
-    global _active_key_configs_cycle
+    # 在 API 密钥循环为空的情况下，尝试从数据库刷新。
+    active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
+    if not active_key_configs:
+        logger.warning("API 密钥循环为空。正在尝试刷新。")
+        active_key_count = update_openai_key_cycle()
+        if active_key_count > 0:
+            # 尝试再次获取密钥
+            active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
+
+    if not active_key_configs:
+        # 如果刷新后循环仍然为空，则日志记录并返回 None
+        logger.warning("API 密钥循环在刷新后立即变空。")
+        return None
+
+    # 返回循环中的下一个 API 密钥配置
     try:
-        key_config = next(_active_key_configs_cycle)
-        return key_config
-    except StopIteration:  # 如果 _active_key_configs_cycle 是用空列表创建的，则会引发此异常
-        print("API 密钥循环为空。正在尝试刷新。")
-        active_count_after_refresh = update_openai_key_cycle()  # 刷新循环
-        if active_count_after_refresh > 0:
-            try:
-                key_config = next(_active_key_configs_cycle)
-                return key_config
-            except StopIteration:
-                # 如果 active_count_after_refresh > 0，这种情况应该很少见，
-                # 但意味着循环在刷新后立即变空。
-                print("API 密钥循环在刷新后立即变空。")
-                return None  # 表示没有可用的密钥
-        else:
-            # 这意味着刷新也没有找到任何密钥
-            print("即使刷新后也没有找到活动的 OpenAI API 密钥。")
-            return None  # 表示没有可用的密钥
+        return active_key_configs[0]
+    except IndexError:
+        logger.error("即使刷新后也没有找到活动的 OpenAI API 密钥。")
+        return None
 
 
 def record_api_key_usage(key_id: str):

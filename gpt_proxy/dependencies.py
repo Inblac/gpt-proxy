@@ -4,6 +4,7 @@ from typing import Optional
 from jose import JWTError, jwt  # 用于 JWT 解码
 
 from . import config
+from . import logger
 
 # 此 OAuth2 方案可供 Depends 用于从 Authorization: Bearer 标头中提取令牌
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/token")  # tokenUrl 是客户端获取令牌的地址
@@ -41,7 +42,7 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
     try:
         if not config.JWT_SECRET_KEY:
             # 这个问题应该更早被发现，但作为安全措施：
-            print(
+            logger.critical(
                 "CRITICAL: JWT_SECRET_KEY is not configured. Authentication will fail."
             )  # 严重：JWT_SECRET_KEY 未配置。身份验证将失败。
             raise credentials_exception
@@ -57,8 +58,8 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
         # 目前，仅返回 True 或用户名（主题）即可。
         return {"username": username}  # 或者如果不需要从令牌中获取用户数据，则简单返回 True
     except JWTError as e:
-        print(f"JWTError during token decode: {e}")  # JWT 解码期间发生 JWTError
+        logger.error(f"JWTError during token decode: {e}")  # JWT 解码期间发生 JWTError
         raise credentials_exception
     except Exception as e_gen:
-        print(f"Unexpected error during token decode: {e_gen}")  # JWT 解码期间发生意外错误
+        logger.error(f"Unexpected error during token decode: {e_gen}")  # JWT 解码期间发生意外错误
         raise credentials_exception

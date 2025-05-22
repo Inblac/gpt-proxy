@@ -10,6 +10,7 @@ from .. import config
 from .. import utils
 from .. import database as db
 from .. import dependencies
+from .. import logger
 
 router = APIRouter()
 
@@ -33,10 +34,10 @@ async def chat_completions_proxy(
         for attempt in range(config.APP_CONFIG_MAX_RETRIES):
             current_key_config: Optional[Dict[str, Any]] = None
             try:
-                current_key_config = await utils.get_next_api_key_config()
+                current_key_config = utils.get_next_openai_key_config()
                 if current_key_config is None:
                     # 无可用 API Key
-                    print(f"尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES}: 无可用 OpenAI API Key。")
+                    logger.info(f"尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES}: 无可用 OpenAI API Key。")
                     if attempt == 0:
                         raise HTTPException(status_code=503, detail="无可用 OpenAI API Key，请添加或激活。")
                     raise HTTPException(status_code=503, detail="此尝试未能获取到可用的 API Key。")
@@ -49,7 +50,7 @@ async def chat_completions_proxy(
                 _name_from_config = current_key_config.get("name")
                 key_name_for_log = _name_from_config if _name_from_config else key_short
 
-                print(
+                logger.info(
                     f"Attempt {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} using key ID: {key_id_for_db} (Name: {key_name_for_log}, Suffix: {key_short})"
                 )
 
@@ -72,7 +73,7 @@ async def chat_completions_proxy(
                                     "POST", target_url, json=request_payload, headers=request_headers, timeout=30.0
                                 ) as response:
                                     if response.status_code == 200:
-                                        print(
+                                        logger.info(
                                             f"流式请求成功启动，使用 Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log})。"
                                         )
                                         # 流式请求成功启动后，记录 API Key 使用情况
@@ -82,7 +83,7 @@ async def chat_completions_proxy(
 
                                         async for chunk in response.aiter_bytes():
                                             yield chunk
-                                        print(
+                                        logger.info(
                                             f"流式请求数据接收完毕，使用 Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log})。"
                                         )
                                     else:
@@ -93,12 +94,12 @@ async def chat_completions_proxy(
                                             if isinstance(error_content, bytes)
                                             else str(error_content)
                                         )
-                                        print(
+                                        logger.error(
                                             f"流式请求初始化错误，Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log}): {response.status_code} - {error_text}"
                                         )
                                         if response.status_code in [401, 403, 429]:  # 特定错误码，禁用 Key
                                             db.update_api_key_status(str_key_id, config.KEY_STATUS_INACTIVE)
-                                            print(
+                                            logger.info(
                                                 f"Key ID {str_key_id} (名称: {key_name_log}) 因 API 错误 {response.status_code} 被设为 '{config.KEY_STATUS_INACTIVE}'。"
                                             )
                                             utils.update_openai_key_cycle()
@@ -106,13 +107,13 @@ async def chat_completions_proxy(
                                         raise HTTPException(status_code=response.status_code, detail=error_text)
 
                             except httpx.RequestError as e_req:  # 网络请求错误
-                                print(
+                                logger.error(
                                     f"流式请求发生 httpx.RequestError，Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log}): {str(e_req)}"
                                 )
                                 raise e_req  # 重新抛出，由主重试循环处理
 
                             except Exception as e_gen:  # 其他通用异常
-                                print(
+                                logger.error(
                                     f"流式处理中发生通用异常，Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log}): {str(e_gen)}"
                                 )
                                 raise  # 重新抛出
@@ -136,18 +137,18 @@ async def chat_completions_proxy(
                         utils.record_api_key_usage(str(key_id_for_db))
                         db.update_api_key_last_used_at(str(key_id_for_db))
                         db.increment_api_key_requests(str(key_id_for_db))  # 新增：增加请求计数
-                        print(
+                        logger.info(
                             f"非流式请求成功，使用 Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})."
                         )
                         return response.json()
                     else:
                         error_content = response.text
-                        print(
+                        logger.error(
                             f"非流式请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
                         )
                         if response.status_code in [401, 403, 429] and key_id_for_db:
                             db.update_api_key_status(str(key_id_for_db), config.KEY_STATUS_INACTIVE)
-                            print(
+                            logger.info(
                                 f"Key ID {key_id_for_db} (名称: {key_name_for_log}) 因 API 错误 {response.status_code} 被设为 '{config.KEY_STATUS_INACTIVE}'。"
                             )
                             utils.update_openai_key_cycle()
@@ -159,12 +160,12 @@ async def chat_completions_proxy(
                 key_short_for_error = key_short if current_key_config else "N/A"
 
                 log_key_id_display = key_id_for_db_error if key_id_for_db_error is not None else "N/A"
-                print(
+                logger.error(
                     f"RequestError (Key ID: {log_key_id_display}, 名称: {key_name_for_error_log}, 后缀: {key_short_for_error}): {e}"
                 )
                 if key_id_for_db_error:  # 如果获取到了 Key，则禁用
                     db.update_api_key_status(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)  # 确保是字符串
-                    print(
+                    logger.info(
                         f"Key ID {key_id_for_db_error} (名称: {key_name_for_error_log}) 因 RequestError 被设为 '{config.KEY_STATUS_INACTIVE}'。"
                     )
                     utils.update_openai_key_cycle()
@@ -176,7 +177,7 @@ async def chat_completions_proxy(
 
             except HTTPException as e:  # 其他 HTTP 异常 (例如之前抛出的无可用 Key 的 503)
                 key_id_display = current_key_config.get("id") if current_key_config else "N/A"
-                print(
+                logger.error(
                     f"OpenAI 调用期间发生 HTTPException (Key ID: {key_id_display}, 尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES}): {e.status_code} - {e.detail}"
                 )
 
@@ -207,7 +208,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
         for attempt in range(config.APP_CONFIG_MAX_RETRIES):
             current_key_config: Optional[Dict[str, Any]] = None
             try:
-                current_key_config = await utils.get_next_api_key_config()
+                current_key_config = utils.get_next_openai_key_config()
                 if current_key_config is None:
                     if attempt == 0:  # 初始无可用 Key
                         raise HTTPException(status_code=503, detail="Models API 无可用 OpenAI Key，请添加或激活。")
@@ -221,7 +222,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                 _name_from_config = current_key_config.get("name")
                 key_name_for_log = _name_from_config if _name_from_config else key_short
 
-                print(
+                logger.info(
                     f"Attempt {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} for /v1/models using key ID: {key_id_for_db} (Name: {key_name_for_log}, Suffix: {key_short})"
                 )
 
@@ -233,18 +234,18 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                     db.increment_api_key_requests(
                         str(key_id_for_db)
                     )  # 新增：增加请求计数 (虽然 models 接口调用频率较低，但统一记录)
-                    print(
+                    logger.info(
                         f"/v1/models 请求成功，使用 Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})。"
                     )
                     return response.json()
                 else:
                     error_content = response.text
-                    print(
+                    logger.error(
                         f"/v1/models 请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
                     )
                     if response.status_code in [401, 403, 429] and key_id_for_db:
                         db.update_api_key_status(str(key_id_for_db), config.KEY_STATUS_INACTIVE)  # 确保是字符串
-                        print(
+                        logger.info(
                             f"Key ID {key_id_for_db} (名称: {key_name_for_log}) 因 API 错误 {response.status_code} (Models API) 被设为 '{config.KEY_STATUS_INACTIVE}'。"
                         )
                         utils.update_openai_key_cycle()
@@ -256,12 +257,12 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                 key_short_for_error = key_short if current_key_config else "N/A"
 
                 log_key_id_display = key_id_for_db_error if key_id_for_db_error is not None else "N/A"
-                print(
+                logger.error(
                     f"Models API RequestError (Key ID: {log_key_id_display}, 名称: {key_name_for_error_log}, 后缀: {key_short_for_error}): {e}"
                 )
                 if key_id_for_db_error:  # 如果获取到了 Key，则禁用
                     db.update_api_key_status(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)  # 确保是字符串
-                    print(
+                    logger.info(
                         f"Key ID {key_id_for_db_error} (名称: {key_name_for_error_log}) 因 RequestError (Models API) 被设为 '{config.KEY_STATUS_INACTIVE}'。"
                     )
                     utils.update_openai_key_cycle()
@@ -273,7 +274,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
 
             except HTTPException as e:  # 其他 HTTP 异常
                 key_id_display = current_key_config.get("id") if current_key_config else "N/A"
-                print(
+                logger.error(
                     f"Models API 调用期间发生 HTTPException (Key ID: {key_id_display}, 尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES}): {e.status_code} - {e.detail}"
                 )
 

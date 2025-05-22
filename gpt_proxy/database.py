@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import os
+from . import logger
 
 DATABASE_NAME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "gpt_proxy.db")
 
@@ -36,10 +37,10 @@ def init_db():
     columns = [column[1] for column in cursor.fetchall()]
     if 'total_requests' not in columns:
         cursor.execute("ALTER TABLE openai_keys ADD COLUMN total_requests INTEGER NOT NULL DEFAULT 0")
-        print("Added 'total_requests' column to existing 'openai_keys' table.")
+        logger.info("Added 'total_requests' column to existing 'openai_keys' table.")
     conn.commit()
     conn.close()
-    print(f"Database {DATABASE_NAME} initialized and table openai_keys created if not exists.")
+    logger.info(f"Database {DATABASE_NAME} initialized and table openai_keys created if not exists.")
 
 
 def add_api_key(api_key: str, name: Optional[str] = None, status: str = 'active') -> str:
@@ -206,7 +207,7 @@ def increment_api_key_requests(key_id: str) -> bool:
         updated_rows = cursor.rowcount
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Error incrementing API key requests for {key_id}: {e}")
+        logger.error(f"Error incrementing API key requests for {key_id}: {e}")
         conn.rollback()  # 错误时回滚
         return False
     finally:
@@ -218,68 +219,68 @@ def increment_api_key_requests(key_id: str) -> bool:
 init_db()
 
 if __name__ == '__main__':
-    print("数据库已通过模块导入时初始化。此脚本部分用于额外测试。")
+    logger.info("数据库已通过模块导入时初始化。此脚本部分用于额外测试。")
 
     try:
         key_id1 = add_api_key("sk-testkey123", name="Test Key 1")
-        print(f"Added key 1 with ID: {key_id1}")
+        logger.info(f"Added key 1 with ID: {key_id1}")
     except ValueError as e:
-        print(e)
+        logger.error(str(e))
 
     try:
         key_id2 = add_api_key("sk-testkey456", name="Test Key 2", status="inactive")
-        print(f"Added key 2 with ID: {key_id2}")
+        logger.info(f"Added key 2 with ID: {key_id2}")
     except ValueError as e:
-        print(e)
+        logger.error(str(e))
 
     try:
         key_id3 = add_api_key("sk-testkey789", name="Test Key 3 Active")
-        print(f"Added key 3 with ID: {key_id3}")
+        logger.info(f"Added key 3 with ID: {key_id3}")
     except ValueError as e:
-        print(e)
+        logger.error(str(e))
 
-    print("\nAll keys:")
+    logger.info("\nAll keys:")
     for key in get_all_api_keys():
-        print(key)
+        logger.info(key)
 
-    print("\nActive keys:")
+    logger.info("\nActive keys:")
     for key in get_active_api_keys():
-        print(key)
+        logger.info(key)
 
     key_to_test_ops = get_api_key_by_key_value("sk-testkey123")
 
     if key_to_test_ops:
         key_id1_ops = key_to_test_ops['id']
-        print(f"\nOperating on key with ID {key_id1_ops}: {key_to_test_ops}")
+        logger.info(f"\nOperating on key with ID {key_id1_ops}: {key_to_test_ops}")
         update_api_key_status(key_id1_ops, "inactive")
-        print(f"Updated status for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
+        logger.info(f"Updated status for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
         update_api_key_last_used_at(key_id1_ops)
-        print(f"Updated last_used_at for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
+        logger.info(f"Updated last_used_at for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
         update_api_key_name(key_id1_ops, "My Personal Key Updated")
-        print(f"Updated name for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
+        logger.info(f"Updated name for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
     else:
-        print("\nSkipping operations on key_id1 as it was not found/added.")
+        logger.warning("\nSkipping operations on key_id1 as it was not found/added.")
 
     key_to_delete = get_api_key_by_key_value("sk-testkey456")
     if key_to_delete:
         key_id2_del = key_to_delete['id']
-        print(f"\nKey with ID {key_id2_del} before delete: {key_to_delete}")
+        logger.info(f"\nKey with ID {key_id2_del} before delete: {key_to_delete}")
         delete_api_key(key_id2_del)
-        print(f"Key with ID {key_id2_del} after delete: {get_api_key_by_id(key_id2_del)}")
+        logger.info(f"Key with ID {key_id2_del} after delete: {get_api_key_by_id(key_id2_del)}")
     else:
-        print("\nSkipping delete for key_id2 as it was not found/added.")
+        logger.warning("\nSkipping delete for key_id2 as it was not found/added.")
 
-    print("\nAll keys after operations:")
+    logger.info("\nAll keys after operations:")
     for key in get_all_api_keys():
-        print(key)
+        logger.info(key)
 
-    print("\nActive keys after operations:")
+    logger.info("\nActive keys after operations:")
     for key in get_active_api_keys():
-        print(key)
+        logger.info(key)
 
     key_val_search = "sk-testkey789"
     found_key_search = get_api_key_by_key_value(key_val_search)
     if found_key_search:
-        print(f"\nFound key by value '{key_val_search}': {found_key_search}")
+        logger.info(f"\nFound key by value '{key_val_search}': {found_key_search}")
     else:
-        print(f"\nKey with value '{key_val_search}' not found.")
+        logger.warning(f"\nKey with value '{key_val_search}' not found.")
