@@ -382,7 +382,7 @@ async def update_api_key_name(
     return {"message": f"API Key with ID '{key_id}' name updated to '{new_name}'."}
 
 
-@router.post("/reset_all_keys", tags=["Admin API Keys Management"])
+@router.post("/keys/reset_all_keys", tags=["Admin API Keys Management"])
 async def reset_all_inactive_keys_to_active(current_user: dict = Depends(dependencies.get_current_admin_user)):
     """将所有状态为 'inactive' 的密钥重置为 'active'"""
     inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]

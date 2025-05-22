@@ -199,17 +199,17 @@ const API_BASE_URL = ''; // 后端 API 的基础路径
 
             const batchResetButton = document.getElementById('batchResetKeysButton');
             if (batchResetButton) {
-                batchResetButton.addEventListener('click', batchResetInvalidKeysToValid);
+                batchResetButton.addEventListener('click', batchResetAllKeys);
             }
         });
 
-        async function batchResetInvalidKeysToValid() {
-            if (!confirm('确定要将所有无效Key重置为有效状态吗？')) {
+        async function batchResetAllKeys() {
+            if (!confirm('确定要重置所有Key吗？')) {
                 return;
             }
             document.getElementById('loading').classList.remove('hidden');
             try {
-                const response = await apiRequest('/api/keys/reset_invalid_to_valid', 'POST');
+                const response = await apiRequest('/api/keys/reset_all_keys', 'POST');
                 if (response) {
                     alert(response.message || `操作完成，重置了 ${response.count} 个Key。`);
                     // 刷新统计信息和列表

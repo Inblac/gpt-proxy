@@ -46,8 +46,8 @@ async def get_admin_page_html(
         raise HTTPException(status_code=404, detail=f"在静态目录中未找到管理页面 (index.html): {index_html_path}")
 
 
-# 将 /admin/token 端点从 routers.admin 移至 main.py 以避免路由级别的认证依赖
-@app.post("/admin/token", response_model=schemas.Token, tags=["Authentication"])
+# 将 /token 端点从 routers.admin 移至 main.py 以避免路由级别的认证依赖
+@app.post("/token", response_model=schemas.Token, tags=["Authentication"])
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     管理员登录用于获取 JWT 令牌的端点。
