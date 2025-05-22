@@ -3,4 +3,5 @@ httpx
 python-jose
 pydantic
 starlette
-uvicorn 
+uvicorn
+python-multipart

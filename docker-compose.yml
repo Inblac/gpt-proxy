@@ -2,10 +2,10 @@ version: '3.8'
 
 services:
   gpt-proxy:
-    build: .
+    image: gpt-proxy
     container_name: gpt-proxy
     ports:
       - "127.0.0.1:33013:8000"
     volumes:
-      - ./data:/data
+      - ./data:/app/data
     restart: unless-stopped 
