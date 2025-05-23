@@ -48,7 +48,7 @@ def add_api_key(api_key: str, name: Optional[str] = None, status: str = 'active'
     conn = get_db_connection()
     cursor = conn.cursor()
     key_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now().isoformat()
     try:
         cursor.execute(
             "INSERT INTO openai_keys (id, api_key, status, created_at, name, total_requests) VALUES (?, ?, ?, ?, ?, ?)",
@@ -130,7 +130,7 @@ def get_api_keys_paginated(page: int = 1, page_size: int = 10, status: Optional[
     if status:
         sql += " WHERE status = ?"
     
-    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    sql += " ORDER BY last_used_at DESC LIMIT ? OFFSET ?"
     
     offset = (page - 1) * page_size
     params.append(page_size)
@@ -147,7 +147,7 @@ def get_active_api_keys() -> List[Dict[str, Any]]:
     """获取所有状态为 'active' 的 API Keys。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM openai_keys WHERE status = 'active' ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM openai_keys WHERE status = 'active' ORDER BY last_used_at")
     keys_data = cursor.fetchall()
     conn.close()
     return [item for item in (_row_to_dict(row) for row in keys_data) if item is not None]
@@ -168,7 +168,7 @@ def update_api_key_last_used_at(key_id: str) -> bool:
     """更新 API Key 的 last_used_at 时间戳。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    last_used_at = datetime.utcnow().isoformat()
+    last_used_at = datetime.now().isoformat()
     cursor.execute("UPDATE openai_keys SET last_used_at = ? WHERE id = ?", (last_used_at, key_id))
     updated_rows = cursor.rowcount
     conn.commit()

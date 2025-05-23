@@ -4,6 +4,8 @@ services:
   gpt-proxy:
     image: gpt-proxy
     container_name: gpt-proxy
+    environment:
+      - TZ=Asia/Shanghai
     ports:
       - "127.0.0.1:33013:8000"
     volumes:
