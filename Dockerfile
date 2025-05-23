@@ -14,4 +14,4 @@ COPY gpt_proxy ./gpt_proxy
 RUN mkdir -p ./data
 
 # 启动命令，config.ini和gpt_proxy.db通过挂载到/data目录
-CMD ["uvicorn", "gpt_proxy.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "gpt_proxy.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"] 
