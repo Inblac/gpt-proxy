@@ -106,10 +106,8 @@ def load_app_config():
         # 加载OpenAI API端点配置
         if 'OpenAI_Endpoints' in config_parser:
             OPENAI_API_ENDPOINT = config_parser['OpenAI_Endpoints'].get('chat_completions_url', OPENAI_API_ENDPOINT)
-            OPENAI_VALIDATION_ENDPOINT = config_parser['OpenAI_Endpoints'].get(
-                'validation_url', OPENAI_VALIDATION_ENDPOINT
-            )
-            logger.info(f"OpenAI API Endpoints: Chat='{OPENAI_API_ENDPOINT}', Validation='{OPENAI_VALIDATION_ENDPOINT}'")
+
+            logger.info(f"OpenAI API Endpoints: Chat='{OPENAI_API_ENDPOINT}'")
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[OpenAI_Endpoints]部分。将使用默认端点。")
 

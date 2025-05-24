@@ -11,10 +11,8 @@ access_token_expire_minutes = 60
 max_retries = 5
 
 [OpenAI_Endpoints]
-# URL for OpenAI chat completions API
+# URL for OpenAI chat completions API (also used for API key validation)
 chat_completions_url = https://api.openai.com/v1/chat/completions
-# URL for OpenAI API validation (e.g., listing models)
-validation_url = https://api.openai.com/v1/models
 
 [OpenAI_API_Keys_Config]
 # Maximum number of calls allowed for a single OpenAI API key within the defined usage window

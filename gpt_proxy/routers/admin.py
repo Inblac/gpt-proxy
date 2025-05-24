@@ -23,10 +23,10 @@ router = APIRouter(
 
 @router.post("/validate_keys", tags=["Admin API Keys Management"])
 async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies.get_current_admin_user)):
-    """重新验证所有标记为无效的API Key"""
+    """重新验证所有标记为无效的API Key - 使用聊天接口验证"""
     # 获取所有无效的密钥
     inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]
-    logger.info(f"Attempting to validate {len(inactive_keys)} inactive keys.")
+    logger.info(f"Attempting to validate {len(inactive_keys)} inactive keys using chat interface.")
 
     # 使用客户端测试每个API密钥
     validation_results = []
@@ -37,17 +37,34 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
             key_value = key["api_key"]
             key_suffix = key_value[-4:] if key_value else "N/A"  # 用于展示密钥末尾，保持隐私
             try:
-                # 调用OpenAI验证端点
-                resp = await client.get(
-                    config.OPENAI_VALIDATION_ENDPOINT,
-                    headers={"Authorization": f"Bearer {key_value}"},
-                    timeout=10.0,
+                # 使用聊天接口验证API密钥
+                chat_payload = {
+                    "model": "gpt-4.1-mini",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Hello"
+                        }
+                    ],
+                    "max_tokens": 10,
+                    "temperature": 0.1
+                }
+                
+                resp = await client.post(
+                    config.OPENAI_API_ENDPOINT,
+                    headers={
+                        "Authorization": f"Bearer {key_value}",
+                        "Content-Type": "application/json"
+                    },
+                    json=chat_payload,
+                    timeout=15.0,
                 )
+                
                 if resp.status_code == 200:
                     # 密钥有效，将其设置为活动状态
                     db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
                     logger.info(
-                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validated successfully. Status updated to '{config.KEY_STATUS_ACTIVE}'."
+                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) re-validated successfully using chat interface. Status updated to '{config.KEY_STATUS_ACTIVE}'."
                     )
                     validation_results.append(
                         {
@@ -56,12 +73,18 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                             "suffix": key_suffix,
                             "success": True,
                             "new_status": config.KEY_STATUS_ACTIVE,
+                            "validation_method": "chat_interface"
                         }
                     )
                 else:
                     # 密钥无效
+                    try:
+                        error_detail = resp.json().get("error", {}).get("message", "Unknown error")
+                    except:
+                        error_detail = f"HTTP {resp.status_code}"
+                    
                     logger.warning(
-                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) validation failed with status code {resp.status_code}."
+                        f"Key ID {key_id} (Name: {key_name}, Suffix: {key_suffix}) validation failed with status code {resp.status_code}. Error: {error_detail}"
                     )
                     validation_results.append(
                         {
@@ -70,7 +93,8 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                             "suffix": key_suffix,
                             "success": False,
                             "status_code": resp.status_code,
-                            "error": f"API responded with status code {resp.status_code}",
+                            "error": error_detail,
+                            "validation_method": "chat_interface"
                         }
                     )
             except Exception as e:
@@ -82,6 +106,7 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                         "suffix": key_suffix,
                         "success": False,
                         "error": str(e),
+                        "validation_method": "chat_interface"
                     }
                 )
 
