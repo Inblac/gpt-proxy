@@ -107,6 +107,93 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
     return {"message": f"验证了 {len(inactive_keys)} 个无效的密钥", "results": validation_results}
 
 
+@router.post("/validate_key/{key_id}", tags=["Admin API Keys Management"])
+async def validate_single_key(key_id: str, current_user: dict = Depends(dependencies.get_current_admin_user)):
+    """验证单个API Key的有效性 - 使用聊天接口验证"""
+    # 获取指定的密钥
+    key = db.get_api_key_by_id(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail=f"未找到ID为 {key_id} 的API Key")
+    
+    key_name = key.get("name", "无名称")
+    key_value = key["api_key"]
+    key_suffix = key_value[-4:] if key_value else "N/A"
+    logger.info(f"开始验证密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix})")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # 使用聊天接口验证API密钥
+            chat_payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 10,
+                "temperature": 0.1,
+            }
+
+            resp = await client.post(
+                config.OPENAI_API_ENDPOINT,
+                headers={"Authorization": f"Bearer {key_value}", "Content-Type": "application/json"},
+                json=chat_payload,
+                timeout=15.0,
+            )
+
+            if resp.status_code == 200:
+                # 密钥有效，将其设置为活动状态
+                db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+                logger.info(
+                    f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证成功。状态已更新为 '{config.KEY_STATUS_ACTIVE}'。"
+                )
+                # 更新OpenAI密钥循环以反映新的有效密钥
+                utils.update_openai_key_cycle()
+                
+                return {
+                    "success": True,
+                    "message": "API Key验证成功，状态已更新为有效",
+                    "key_id": key_id,
+                    "name": key_name,
+                    "suffix": key_suffix,
+                    "new_status": config.KEY_STATUS_ACTIVE,
+                    "validation_method": "chat_interface",
+                }
+            else:
+                # 密钥无效，确保状态为无效
+                if key["status"] != config.KEY_STATUS_INACTIVE:
+                    db.update_api_key_status(key_id, config.KEY_STATUS_INACTIVE)
+                    utils.update_openai_key_cycle()
+                
+                try:
+                    error_detail = resp.json().get("error", {}).get("message", "未知错误")
+                except:
+                    error_detail = f"HTTP {resp.status_code}"
+
+                logger.warning(
+                    f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证失败，状态码 {resp.status_code}。错误: {error_detail}"
+                )
+                
+                return {
+                    "success": False,
+                    "message": f"API Key验证失败: {error_detail}",
+                    "key_id": key_id,
+                    "name": key_name,
+                    "suffix": key_suffix,
+                    "status_code": resp.status_code,
+                    "error": error_detail,
+                    "validation_method": "chat_interface",
+                }
+                
+    except Exception as e:
+        logger.error(f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证请求错误: {e}")
+        return {
+            "success": False,
+            "message": f"验证请求失败: {str(e)}",
+            "key_id": key_id,
+            "name": key_name,
+            "suffix": key_suffix,
+            "error": str(e),
+            "validation_method": "chat_interface",
+        }
+
+
 @router.get("/stats", response_model=schemas.GlobalStatsResponse)
 async def get_api_key_stats_endpoint():
     all_db_keys = db.get_all_api_keys()

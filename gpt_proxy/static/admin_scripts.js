@@ -403,6 +403,15 @@ function renderTable(keysData, tableId, keyType) {
         const actionsCell = row.insertCell();
         actionsCell.className = 'actions';
         
+        // 如果是无效key，添加验证按钮
+        if (key.status === 'inactive') {
+            const validateButton = document.createElement('button');
+            validateButton.textContent = '验证';
+            validateButton.classList.add('validate-btn');
+            validateButton.onclick = () => validateSingleKey(key.id, key.api_key_masked);
+            actionsCell.appendChild(validateButton);
+        }
+        
         const toggleStatusButton = document.createElement('button');
         let newStatus, buttonText;
         if (key.status === 'active') {
@@ -717,22 +726,27 @@ async function toggleKeyStatus(keyId, newStatus) {
     }
 }
 
-async function triggerValidateKeys() {
-    if (!confirm('确定要重新验证所有失效的 Key 吗？这可能需要一些时间。')) {
+async function validateSingleKey(keyId, displayKey) {
+    if (!confirm(`确定要验证 Key "${displayKey}" 吗？`)) {
         return;
     }
+    
     document.getElementById('loading').classList.remove('hidden');
     try {
-        const result = await apiRequest('/api/validate_keys', 'POST');
+        const result = await apiRequest(`/api/validate_key/${keyId}`, 'POST');
         if (result) {
-            alert('Key 验证请求已发送。请稍后刷新查看最新状态。');
+            if (result.success) {
+                alert(`Key "${displayKey}" 验证成功！状态已更新为有效。`);
+            } else {
+                alert(`Key "${displayKey}" 验证失败：${result.message}`);
+            }
             // 刷新统计信息和列表
             await loadStats();
-            await loadValidKeys(1, validKeysPageSize);
-            await loadInvalidKeys(1, invalidKeysPageSize);
+            await loadValidKeys(validKeysCurrentPage, validKeysPageSize);
+            await loadInvalidKeys(invalidKeysCurrentPage, invalidKeysPageSize);
         }
     } catch (error) {
-        showKeyManagementError(`触发 Key 验证失败: ${error.message}`);
+        showKeyManagementError(`验证 Key "${displayKey}" 失败: ${error.message}`);
     } finally {
         document.getElementById('loading').classList.add('hidden');
     }
