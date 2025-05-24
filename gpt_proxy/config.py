@@ -52,26 +52,26 @@ def load_app_config():
         config_parser.read(CONFIG_FILE_PATH)
 
         # 加载代理API密钥
-        if 'proxy_auth' in config_parser and 'api_keys' in config_parser['proxy_auth']:
-            keys_str = config_parser['proxy_auth']['api_keys']
-            PROXY_API_KEYS = [key.strip() for key in keys_str.split(',') if key.strip()]
+        if "proxy_auth" in config_parser and "api_keys" in config_parser["proxy_auth"]:
+            keys_str = config_parser["proxy_auth"]["api_keys"]
+            PROXY_API_KEYS = [key.strip() for key in keys_str.split(",") if key.strip()]
             if PROXY_API_KEYS:
                 logger.info(f"从 '{CONFIG_FILE_PATH}' 加载了 {len(PROXY_API_KEYS)} 个代理API Key。")
             else:
                 logger.warning(f"在 '{CONFIG_FILE_PATH}' 的[proxy_auth]部分找到了'api_keys'，但值为空或格式不正确。")
                 PROXY_API_KEYS = []
 
-            PROXY_API_KEY_HEADER = config_parser['proxy_auth'].get('proxy_api_key_header', PROXY_API_KEY_HEADER)
-            logger.info(f"Proxy API Key Header设置为: '{PROXY_API_KEY_HEADER}'")
+            PROXY_API_KEY_HEADER = config_parser["proxy_auth"].get("proxy_api_key_header", PROXY_API_KEY_HEADER)
+            logger.info(f"代理API密钥头部设置为: '{PROXY_API_KEY_HEADER}'")
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[proxy_auth]部分或'api_keys'键。")
             PROXY_API_KEYS = []
 
         # 加载JWT设置
-        if 'jwt' in config_parser:
-            JWT_SECRET_KEY = config_parser['jwt'].get('secret_key', None)
-            JWT_ALGORITHM = config_parser['jwt'].get('algorithm', 'HS256')
-            JWT_ACCESS_TOKEN_EXPIRE_MINUTES = config_parser['jwt'].getint('access_token_expire_minutes', 60)
+        if "jwt" in config_parser:
+            JWT_SECRET_KEY = config_parser["jwt"].get("secret_key", None)
+            JWT_ALGORITHM = config_parser["jwt"].get("algorithm", "HS256")
+            JWT_ACCESS_TOKEN_EXPIRE_MINUTES = config_parser["jwt"].getint("access_token_expire_minutes", 60)
 
             if not JWT_SECRET_KEY:
                 import secrets
@@ -91,8 +91,8 @@ def load_app_config():
             logger.warning(f"已生成临时JWT_SECRET_KEY: {JWT_SECRET_KEY}。请添加到config.ini。")
 
         # 加载应用设置
-        if 'App' in config_parser:
-            APP_CONFIG_MAX_RETRIES = config_parser['App'].getint('max_retries', 5)
+        if "App" in config_parser:
+            APP_CONFIG_MAX_RETRIES = config_parser["App"].getint("max_retries", 5)
             if APP_CONFIG_MAX_RETRIES <= 0:
                 logger.warning(f"[App] max_retries配置值({APP_CONFIG_MAX_RETRIES})无效。将使用默认值1。")
                 APP_CONFIG_MAX_RETRIES = 1
@@ -104,23 +104,25 @@ def load_app_config():
             )
 
         # 加载OpenAI API端点配置
-        if 'OpenAI_Endpoints' in config_parser:
-            OPENAI_API_ENDPOINT = config_parser['OpenAI_Endpoints'].get('chat_completions_url', OPENAI_API_ENDPOINT)
-
-            logger.info(f"OpenAI API Endpoints: Chat='{OPENAI_API_ENDPOINT}'")
+        if "OpenAI_Endpoints" in config_parser:
+            OPENAI_API_ENDPOINT = config_parser["OpenAI_Endpoints"].get("chat_completions_url", OPENAI_API_ENDPOINT)
+            OPENAI_VALIDATION_ENDPOINT = config_parser["OpenAI_Endpoints"].get(
+                "validation_url", OPENAI_VALIDATION_ENDPOINT
+            )
+            logger.info(f"OpenAI API端点: 聊天='{OPENAI_API_ENDPOINT}', 验证='{OPENAI_VALIDATION_ENDPOINT}'")
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[OpenAI_Endpoints]部分。将使用默认端点。")
 
         # 加载OpenAI API密钥轮换配置
-        if 'OpenAI_API_Keys_Config' in config_parser:
-            MAX_CALLS_PER_KEY_PER_WINDOW = config_parser['OpenAI_API_Keys_Config'].getint(
-                'max_calls_per_key_per_window', MAX_CALLS_PER_KEY_PER_WINDOW
+        if "OpenAI_API_Keys_Config" in config_parser:
+            MAX_CALLS_PER_KEY_PER_WINDOW = config_parser["OpenAI_API_Keys_Config"].getint(
+                "max_calls_per_key_per_window", MAX_CALLS_PER_KEY_PER_WINDOW
             )
-            USAGE_WINDOW_SECONDS = config_parser['OpenAI_API_Keys_Config'].getint(
-                'usage_window_seconds', USAGE_WINDOW_SECONDS
+            USAGE_WINDOW_SECONDS = config_parser["OpenAI_API_Keys_Config"].getint(
+                "usage_window_seconds", USAGE_WINDOW_SECONDS
             )
             logger.info(
-                f"OpenAI Keys Config: MaxCallsPerWindow={MAX_CALLS_PER_KEY_PER_WINDOW}, UsageWindowSeconds={USAGE_WINDOW_SECONDS}"
+                f"OpenAI密钥配置: 最大调用次数={MAX_CALLS_PER_KEY_PER_WINDOW}, 使用窗口秒数={USAGE_WINDOW_SECONDS}"
             )
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[OpenAI_API_Keys_Config]部分。将使用默认轮换配置。")

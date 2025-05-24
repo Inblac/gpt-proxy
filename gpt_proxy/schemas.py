@@ -73,6 +73,7 @@ class KeyNameUpdatePayload(BaseModel):
 
 class PageParams(BaseModel):
     """分页参数"""
+
     page: int = Field(1, ge=1, description="页码，从1开始")
     page_size: int = Field(10, ge=1, le=100, description="每页数量，最小1，最大100")
     status: Optional[str] = Field(None, description="可选的状态过滤，如'active', 'inactive', 'revoked'")
@@ -80,6 +81,7 @@ class PageParams(BaseModel):
 
 class PageInfo(BaseModel):
     """分页信息"""
+
     total: int = Field(..., description="总记录数")
     page: int = Field(..., description="当前页码")
     page_size: int = Field(..., description="每页数量")
@@ -93,6 +95,7 @@ class CategorizedOpenAIKeys(BaseModel):
 
 class PaginatedOpenAIKeys(BaseModel):
     """分页API Keys响应"""
+
     items: List[OpenAIKeyDisplay]
     page_info: PageInfo
 
@@ -109,16 +112,19 @@ class ResetKeysResponse(BaseModel):
 
 class APIKeysBulkCreate(BaseModel):
     """批量添加API密钥的请求模型"""
+
     keys: str  # 包含多个key的字符串，每行一个key
 
 
 class APIKeyStatusUpdate(BaseModel):
     """更新API密钥状态的请求模型"""
+
     status: str
 
 
 class APIKeyNameUpdate(BaseModel):
     """更新API密钥名称的请求模型"""
+
     name: str
 
 

@@ -48,7 +48,7 @@ async def chat_completions_proxy(
                 key_name_for_log = _name_from_config if _name_from_config else key_short
 
                 logger.info(
-                    f"Attempt {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} using key ID: {key_id_for_db} (Name: {key_name_for_log}, Suffix: {key_short})"
+                    f"尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} 使用密钥ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})"
                 )
 
                 if is_stream:
@@ -87,7 +87,7 @@ async def chat_completions_proxy(
                                         # 处理流式请求错误
                                         error_content = await response.aread()
                                         error_text = (
-                                            error_content.decode('utf-8', errors='replace')
+                                            error_content.decode("utf-8", errors="replace")
                                             if isinstance(error_content, bytes)
                                             else str(error_content)
                                         )
@@ -179,7 +179,7 @@ async def chat_completions_proxy(
                 )
 
                 # 如果是初次尝试就因无可用Key而失败(503)，则直接抛出
-                if e.status_code == 503 and "No active OpenAI API keys available" in e.detail and attempt == 0:
+                if e.status_code == 503 and "无可用OpenAI API Key" in e.detail and attempt == 0:
                     raise
 
                 if attempt < config.APP_CONFIG_MAX_RETRIES - 1:
@@ -217,7 +217,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                 key_name_for_log = _name_from_config if _name_from_config else key_short
 
                 logger.info(
-                    f"Attempt {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} for /v1/models using key ID: {key_id_for_db} (Name: {key_name_for_log}, Suffix: {key_short})"
+                    f"尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES} 对/v1/models使用密钥ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})"
                 )
 
                 response = await client.get(config.OPENAI_VALIDATION_ENDPOINT, headers=headers, timeout=30.0)
@@ -270,7 +270,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                     f"Models API调用期间发生HTTPException (Key ID: {key_id_display}, 尝试 {attempt + 1}/{config.APP_CONFIG_MAX_RETRIES}): {e.status_code} - {e.detail}"
                 )
 
-                if e.status_code == 503 and "No active OpenAI API keys available" in e.detail and attempt == 0:  # 初次尝试即无Key
+                if e.status_code == 503 and "无可用OpenAI Key" in e.detail and attempt == 0:  # 初次尝试即无Key
                     raise
 
                 if attempt < config.APP_CONFIG_MAX_RETRIES - 1:
@@ -279,6 +279,4 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                 else:  # 所有尝试失败或遇到不可重试的错误
                     raise
 
-        raise HTTPException(
-            status_code=500, detail=f"所有{config.APP_CONFIG_MAX_RETRIES}次Models API调用尝试均失败。"
-        )
+        raise HTTPException(status_code=500, detail=f"所有{config.APP_CONFIG_MAX_RETRIES}次Models API调用尝试均失败。")

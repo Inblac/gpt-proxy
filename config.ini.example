@@ -11,11 +11,13 @@ access_token_expire_minutes = 60
 max_retries = 5
 
 [OpenAI_Endpoints]
-# URL for OpenAI chat completions API (also used for API key validation)
+# OpenAI聊天完成API的URL（也用于API密钥验证）
 chat_completions_url = https://api.openai.com/v1/chat/completions
+# OpenAI API验证URL（例如：列出模型）
+validation_url = https://api.openai.com/v1/models
 
 [OpenAI_API_Keys_Config]
-# Maximum number of calls allowed for a single OpenAI API key within the defined usage window
+# 在定义的使用窗口内，单个OpenAI API密钥允许的最大调用次数
 max_calls_per_key_per_window = 1000
-# The time window in seconds for tracking OpenAI API key usage
+# 跟踪OpenAI API密钥使用情况的时间窗口（秒）
 usage_window_seconds = 3600

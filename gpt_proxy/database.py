@@ -20,7 +20,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        '''
+        """
         CREATE TABLE IF NOT EXISTS openai_keys (
             id TEXT PRIMARY KEY,
             api_key TEXT UNIQUE NOT NULL,
@@ -30,20 +30,20 @@ def init_db():
             name TEXT,
             total_requests INTEGER NOT NULL DEFAULT 0
         )
-    '''
+    """
     )
     # 检查并添加 total_requests 列（如果旧表存在且没有该列），用于向后兼容
     cursor.execute("PRAGMA table_info(openai_keys)")
     columns = [column[1] for column in cursor.fetchall()]
-    if 'total_requests' not in columns:
+    if "total_requests" not in columns:
         cursor.execute("ALTER TABLE openai_keys ADD COLUMN total_requests INTEGER NOT NULL DEFAULT 0")
-        logger.info("Added 'total_requests' column to existing 'openai_keys' table.")
+        logger.info("已为现有的'openai_keys'表添加'total_requests'列。")
     conn.commit()
     conn.close()
-    logger.info(f"Database {DATABASE_NAME} initialized and table openai_keys created if not exists.")
+    logger.info(f"数据库 {DATABASE_NAME} 已初始化，如果不存在则创建了openai_keys表。")
 
 
-def add_api_key(api_key: str, name: Optional[str] = None, status: str = 'active') -> str:
+def add_api_key(api_key: str, name: Optional[str] = None, status: str = "active") -> str:
     """添加一个新的 API Key 到数据库。"""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -57,7 +57,7 @@ def add_api_key(api_key: str, name: Optional[str] = None, status: str = 'active'
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
-        raise ValueError(f"API key {api_key} already exists.")
+        raise ValueError(f"API密钥 {api_key} 已存在。")
     finally:
         conn.close()
     return key_id
@@ -100,46 +100,48 @@ def get_all_api_keys() -> List[Dict[str, Any]]:
     return [item for item in (_row_to_dict(row) for row in keys_data) if item is not None]
 
 
-def get_api_keys_paginated(page: int = 1, page_size: int = 10, status: Optional[str] = None) -> tuple[List[Dict[str, Any]], int]:
+def get_api_keys_paginated(
+    page: int = 1, page_size: int = 10, status: Optional[str] = None
+) -> tuple[List[Dict[str, Any]], int]:
     """获取分页的 API Keys。
-    
+
     Args:
         page: 页码，从1开始
         page_size: 每页数量
         status: 可选的状态过滤，如'active', 'inactive', 'revoked'
-        
+
     Returns:
         包含两个元素的元组：(分页后的keys列表, 总记录数)
     """
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     # 计算总记录数
     count_sql = "SELECT COUNT(*) FROM openai_keys"
     params = []
-    
+
     if status:
         count_sql += " WHERE status = ?"
         params.append(status)
-    
+
     cursor.execute(count_sql, params)
     total_count = cursor.fetchone()[0]
-    
+
     # 查询分页数据
     sql = "SELECT * FROM openai_keys"
     if status:
         sql += " WHERE status = ?"
-    
+
     sql += " ORDER BY last_used_at DESC LIMIT ? OFFSET ?"
-    
+
     offset = (page - 1) * page_size
     params.append(page_size)
     params.append(offset)
-    
+
     cursor.execute(sql, params)
     keys_data = cursor.fetchall()
     conn.close()
-    
+
     return [item for item in (_row_to_dict(row) for row in keys_data) if item is not None], total_count
 
 
@@ -207,7 +209,7 @@ def increment_api_key_requests(key_id: str) -> bool:
         updated_rows = cursor.rowcount
         conn.commit()
     except sqlite3.Error as e:
-        logger.error(f"Error incrementing API key requests for {key_id}: {e}")
+        logger.error(f"增加API密钥请求计数时发生错误，密钥ID {key_id}: {e}")
         conn.rollback()  # 错误时回滚
         return False
     finally:
@@ -218,69 +220,69 @@ def increment_api_key_requests(key_id: str) -> bool:
 # 模块导入时初始化数据库并创建表（如果不存在），确保数据库在其他模块访问前准备就绪。
 init_db()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logger.info("数据库已通过模块导入时初始化。此脚本部分用于额外测试。")
 
     try:
-        key_id1 = add_api_key("sk-testkey123", name="Test Key 1")
-        logger.info(f"Added key 1 with ID: {key_id1}")
+        key_id1 = add_api_key("sk-testkey123", name="测试密钥1")
+        logger.info(f"已添加密钥1，ID: {key_id1}")
     except ValueError as e:
         logger.error(str(e))
 
     try:
-        key_id2 = add_api_key("sk-testkey456", name="Test Key 2", status="inactive")
-        logger.info(f"Added key 2 with ID: {key_id2}")
+        key_id2 = add_api_key("sk-testkey456", name="测试密钥2", status="inactive")
+        logger.info(f"已添加密钥2，ID: {key_id2}")
     except ValueError as e:
         logger.error(str(e))
 
     try:
-        key_id3 = add_api_key("sk-testkey789", name="Test Key 3 Active")
-        logger.info(f"Added key 3 with ID: {key_id3}")
+        key_id3 = add_api_key("sk-testkey789", name="测试密钥3活动")
+        logger.info(f"已添加密钥3，ID: {key_id3}")
     except ValueError as e:
         logger.error(str(e))
 
-    logger.info("\nAll keys:")
+    logger.info("\n所有密钥:")
     for key in get_all_api_keys():
         logger.info(key)
 
-    logger.info("\nActive keys:")
+    logger.info("\n活动密钥:")
     for key in get_active_api_keys():
         logger.info(key)
 
     key_to_test_ops = get_api_key_by_key_value("sk-testkey123")
 
     if key_to_test_ops:
-        key_id1_ops = key_to_test_ops['id']
-        logger.info(f"\nOperating on key with ID {key_id1_ops}: {key_to_test_ops}")
+        key_id1_ops = key_to_test_ops["id"]
+        logger.info(f"\n正在操作ID为{key_id1_ops}的密钥: {key_to_test_ops}")
         update_api_key_status(key_id1_ops, "inactive")
-        logger.info(f"Updated status for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
+        logger.info(f"已更新密钥ID {key_id1_ops}的状态: {get_api_key_by_id(key_id1_ops)}")
         update_api_key_last_used_at(key_id1_ops)
-        logger.info(f"Updated last_used_at for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
-        update_api_key_name(key_id1_ops, "My Personal Key Updated")
-        logger.info(f"Updated name for key ID {key_id1_ops}: {get_api_key_by_id(key_id1_ops)}")
+        logger.info(f"已更新密钥ID {key_id1_ops}的最后使用时间: {get_api_key_by_id(key_id1_ops)}")
+        update_api_key_name(key_id1_ops, "我的个人密钥已更新")
+        logger.info(f"已更新密钥ID {key_id1_ops}的名称: {get_api_key_by_id(key_id1_ops)}")
     else:
-        logger.warning("\nSkipping operations on key_id1 as it was not found/added.")
+        logger.warning("\n跳过对key_id1的操作，因为未找到或未添加。")
 
     key_to_delete = get_api_key_by_key_value("sk-testkey456")
     if key_to_delete:
-        key_id2_del = key_to_delete['id']
-        logger.info(f"\nKey with ID {key_id2_del} before delete: {key_to_delete}")
+        key_id2_del = key_to_delete["id"]
+        logger.info(f"\n删除前ID为{key_id2_del}的密钥: {key_to_delete}")
         delete_api_key(key_id2_del)
-        logger.info(f"Key with ID {key_id2_del} after delete: {get_api_key_by_id(key_id2_del)}")
+        logger.info(f"删除后ID为{key_id2_del}的密钥: {get_api_key_by_id(key_id2_del)}")
     else:
-        logger.warning("\nSkipping delete for key_id2 as it was not found/added.")
+        logger.warning("\n跳过对key_id2的删除，因为未找到或未添加。")
 
-    logger.info("\nAll keys after operations:")
+    logger.info("\n操作后所有密钥:")
     for key in get_all_api_keys():
         logger.info(key)
 
-    logger.info("\nActive keys after operations:")
+    logger.info("\n操作后活动密钥:")
     for key in get_active_api_keys():
         logger.info(key)
 
     key_val_search = "sk-testkey789"
     found_key_search = get_api_key_by_key_value(key_val_search)
     if found_key_search:
-        logger.info(f"\nFound key by value '{key_val_search}': {found_key_search}")
+        logger.info(f"\n通过值'{key_val_search}'找到密钥: {found_key_search}")
     else:
-        logger.warning(f"\nKey with value '{key_val_search}' not found.")
+        logger.warning(f"\n未找到值为'{key_val_search}'的密钥。")

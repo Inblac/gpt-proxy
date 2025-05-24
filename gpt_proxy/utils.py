@@ -26,10 +26,10 @@ def update_openai_key_cycle() -> int:
 
     if active_keys:
         _active_key_configs_cycle = itertools.cycle(active_keys)
-        logger.info(f"Updated OpenAI key cycle. {active_key_count} active keys found.")
+        logger.info(f"已更新OpenAI密钥循环。找到 {active_key_count} 个活动密钥。")
     else:
         _active_key_configs_cycle = itertools.cycle([])
-        logger.warning("No active OpenAI keys found in the database for the cycle.")
+        logger.warning("在数据库中未找到用于循环的活动OpenAI密钥。")
     return active_key_count
 
 
@@ -93,7 +93,7 @@ def mask_api_key_for_display(api_key: str) -> str:
             suffix = api_key[-4:]
             return f"{prefix}{placeholder}{suffix}"
         else:
-            rest_of_key = api_key[len(prefix):]
+            rest_of_key = api_key[len(prefix) :]
             masked_key = f"{prefix}{placeholder}{rest_of_key}"
             return masked_key.ljust(target_len)
     else:

@@ -7,10 +7,8 @@ import os
 from datetime import timedelta
 
 # 导入模块
-from . import database as db
 from . import schemas
 from . import config
-from . import dependencies
 from . import utils
 from .routers import chat, admin
 from . import logger
@@ -45,43 +43,41 @@ async def get_admin_page_html(
 @app.post("/token", response_model=schemas.Token, tags=["Authentication"])
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """管理员登录获取JWT令牌的端点"""
-    logger.debug("DEBUG (main.py): /token endpoint CALLED!")
-    
+    logger.debug("调试 (main.py): /token端点被调用！")
+
     try:
-        logger.debug(f"DEBUG (main.py): Raw form data received: {form_data}")
+        logger.debug(f"调试 (main.py): 收到原始表单数据: {form_data}")
     except Exception as e:
-        logger.error(f"DEBUG (main.py): Could not log form_data: {e}")
+        logger.error(f"调试 (main.py): 无法记录表单数据: {e}")
 
     try:
         username = form_data.username
         password = form_data.password
-        
-        logger.debug(f"DEBUG (main.py): Attempted login with username: {username}")
-        
+
+        logger.debug(f"调试 (main.py): 尝试登录用户名: {username}")
+
         if password not in config.PROXY_API_KEYS:
-            logger.warning(f"DEBUG (main.py): Invalid credentials for user: {username}")
+            logger.warning(f"调试 (main.py): 用户凭据无效: {username}")
             raise HTTPException(
                 status_code=401,
-                detail="Incorrect username or password",
+                detail="用户名或密码错误",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        logger.debug(f"DEBUG (main.py): Successful login for user: {username}")
-        
+
+        logger.debug(f"调试 (main.py): 用户登录成功: {username}")
+
         # 创建访问令牌
         access_token_expires = timedelta(minutes=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = utils.create_access_token(
-            data={"sub": username}, expires_delta=access_token_expires
-        )
-        
-        logger.info(f"DEBUG (main.py): Generated token for user: {username}")
-        
+        access_token = utils.create_access_token(data={"sub": username}, expires_delta=access_token_expires)
+
+        logger.info(f"调试 (main.py): 为用户生成令牌: {username}")
+
         return {"access_token": access_token, "token_type": "bearer"}
     except Exception as e:
-        logger.error(f"DEBUG (main.py): Error processing request form data: {e}")
+        logger.error(f"调试 (main.py): 处理请求表单数据时出错: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error processing login: {str(e)}",
+            detail=f"处理登录时发生内部服务器错误: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -90,11 +86,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常处理，记录未处理的异常并返回友好的错误消息"""
     logger.error(f"未处理的异常: {exc}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"服务器错误: {str(exc)}"}
-    )
+
+    return JSONResponse(status_code=500, content={"detail": f"服务器错误: {str(exc)}"})
 
 
 # 挂载静态文件目录
@@ -104,15 +97,13 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 async def startup_event():
     """应用启动：初始化数据库和加载配置"""
-    logger.info("Application startup: Database initialized on module import.")
+    logger.info("应用启动：数据库已在模块导入时初始化。")
 
-    logger.info("Application startup: Updating OpenAI key cycle from DB.")
+    logger.info("应用启动：正在从数据库更新OpenAI密钥循环。")
     utils.api_key_usage.clear()
     utils.update_openai_key_cycle()
 
-    logger.info(
-        "Application startup: Proxy API Keys are loaded from config module on import."
-    )
+    logger.info("应用启动：代理API密钥已在配置模块导入时加载。")
 
 
 # --- 辅助函数 ---

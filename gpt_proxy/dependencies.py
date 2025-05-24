@@ -12,19 +12,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/token")  # tokenUrl 是客
 
 async def verify_proxy_api_key(authorization: Optional[str] = Header(None)):
     """
-    Verifies the proxy API key provided in the Authorization header (Bearer token).
-    Raises HTTPException if the key is missing, malformed, or invalid.
+    验证在Authorization标头中提供的代理API密钥（Bearer令牌）。
+    如果密钥缺失、格式错误或无效，则抛出HTTPException。
     """
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
+        raise HTTPException(status_code=401, detail="缺少Authorization标头")
 
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid Authorization header format. Expected 'Bearer <token>'")
+        raise HTTPException(status_code=401, detail="Authorization标头格式无效。期望 'Bearer <token>'")
 
     token = parts[1]
     if token not in config.PROXY_API_KEYS:
-        raise HTTPException(status_code=403, detail="Invalid Proxy API Key")
+        raise HTTPException(status_code=403, detail="无效的代理API密钥")
     return token
 
 
@@ -36,15 +36,13 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
     """
     credentials_exception = HTTPException(
         status_code=401,
-        detail="Could not validate credentials",  # 无法验证凭据
+        detail="无法验证凭据",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         if not config.JWT_SECRET_KEY:
             # 这个问题应该更早被发现，但作为安全措施：
-            logger.critical(
-                "CRITICAL: JWT_SECRET_KEY is not configured. Authentication will fail."
-            )  # 严重：JWT_SECRET_KEY 未配置。身份验证将失败。
+            logger.critical("严重：JWT_SECRET_KEY未配置。身份验证将失败。")
             raise credentials_exception
 
         payload = jwt.decode(token, config.JWT_SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
@@ -58,8 +56,8 @@ async def get_current_admin_user(token: str = Depends(oauth2_scheme)):
         # 目前，仅返回 True 或用户名（主题）即可。
         return {"username": username}  # 或者如果不需要从令牌中获取用户数据，则简单返回 True
     except JWTError as e:
-        logger.error(f"JWTError during token decode: {e}")  # JWT 解码期间发生 JWTError
+        logger.error(f"JWT解码期间发生JWTError: {e}")
         raise credentials_exception
     except Exception as e_gen:
-        logger.error(f"Unexpected error during token decode: {e_gen}")  # JWT 解码期间发生意外错误
+        logger.error(f"JWT解码期间发生意外错误: {e_gen}")
         raise credentials_exception
