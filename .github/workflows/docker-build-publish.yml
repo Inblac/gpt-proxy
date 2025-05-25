@@ -42,13 +42,6 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE_NAME }} # 使用上面定义的镜像名
           tags: | # 定义镜像标签的生成规则
-            type=schedule
-            type=ref,event=branch # 例如：main -> latest (如果默认分支) 或 main
-            type=ref,event=pr # 例如：pr-123
-            type=semver,pattern={{version}} # 例如：v1.0.0 -> 1.0.0
-            type=semver,pattern={{major}}.{{minor}} # 例如：v1.0.0 -> 1.0
-            type=semver,pattern={{major}} # 例如：v1.0.0 -> 1
-            type=sha,format=long # 例如：abcdef123456
             # 只有在推送到默认分支 (main) 时才打 latest 标签
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }} 
 
