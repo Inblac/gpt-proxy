@@ -667,7 +667,7 @@ async function addOpenAiKeys() {
     
     try {
         // 使用批量添加API
-        const result = await apiRequest('/api/keys/bulk', 'POST', { api_keys: keysString });
+        const result = await apiRequest('/api/keys/bulk', 'POST', { keys: keysString });
         document.getElementById('loading').classList.add('hidden');
         newKeysInput.value = ''; // Clear textarea
         
