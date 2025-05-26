@@ -133,4 +133,35 @@ Bug reports and feature requests are welcome. If you want to contribute code, pl
 
 ## License
 
-[MIT License](LICENSE) 
+[MIT License](LICENSE)
+
+## 数据库配置
+
+GPT-Proxy默认使用SQLite数据库存储API密钥和相关数据。现在也支持使用PostgreSQL作为替代选项。
+
+### 配置数据库类型
+
+在`data/config.ini`文件中，添加或修改`[Database]`部分来配置数据库：
+
+```ini
+[Database]
+# 数据库类型: sqlite (默认) 或 postgresql
+type = sqlite
+
+# 以下配置仅在 type = postgresql 时使用
+host = localhost
+port = 5432
+database = gpt_proxy
+user = postgres
+password = your_password
+```
+
+### PostgreSQL支持
+
+如果要使用PostgreSQL，需要安装psycopg2库：
+
+```bash
+pip install psycopg2-binary
+```
+
+然后修改配置文件，将`type`设置为`postgresql`，并配置正确的连接参数。 

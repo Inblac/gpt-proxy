@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   gpt-proxy:
-    image: gpt-proxy
+    image: nalvix/gpt-proxy:latest
     container_name: gpt-proxy
     environment:
       - TZ=Asia/Shanghai

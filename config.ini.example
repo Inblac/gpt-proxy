@@ -21,3 +21,14 @@ validation_url = https://api.openai.com/v1/models
 max_calls_per_key_per_window = 1000
 # 跟踪OpenAI API密钥使用情况的时间窗口（秒）
 usage_window_seconds = 3600
+
+[Database]
+# 数据库类型: sqlite (默认) 或 postgresql
+type = sqlite
+
+# 以下配置仅在 type = postgresql 时使用
+host = localhost
+port = 5432
+database = gpt_proxy
+user = postgres
+password = your_password

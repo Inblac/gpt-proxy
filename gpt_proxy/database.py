@@ -1,46 +1,106 @@
 import sqlite3
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, cast, TypeVar
 import os
 from . import logger
+from .config import DB_TYPE, DB_CONNECTION_PARAMS
+
+# 如果配置了PostgreSQL，导入psycopg2
+if DB_TYPE in ["postgresql", "postgres"]:
+    try:
+        import psycopg2
+        from psycopg2.extras import DictCursor
+    except ImportError:
+        logger.error("未安装psycopg2模块。请使用 'pip install psycopg2-binary' 安装它以使用PostgreSQL。")
+        raise ImportError("未安装psycopg2模块。请使用 'pip install psycopg2-binary' 安装它以使用PostgreSQL。")
 
 DATABASE_NAME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "gpt_proxy.db")
+
+# 定义通用的行类型
+RowType = TypeVar('RowType', sqlite3.Row, Dict[str, Any])
 
 
 def get_db_connection():
     """创建并返回一个数据库连接。"""
-    conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row  # 允许通过列名访问数据（使结果行为类似字典）
-    return conn
+    if DB_TYPE in ["postgresql", "postgres"]:
+        conn = psycopg2.connect(
+            host=DB_CONNECTION_PARAMS.get("host", "localhost"),
+            port=DB_CONNECTION_PARAMS.get("port", 5432),
+            database=DB_CONNECTION_PARAMS.get("database", "gpt_proxy"),
+            user=DB_CONNECTION_PARAMS.get("user", "postgres"),
+            password=DB_CONNECTION_PARAMS.get("password", ""),
+        )
+        # 设置使用字典游标，类似于sqlite3.Row
+        conn.cursor_factory = DictCursor
+        return conn
+    else:  # 默认使用SQLite
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row  # 允许通过列名访问数据（使结果行为类似字典）
+        return conn
 
 
 def init_db():
     """初始化数据库，创建 openai_keys 表（如果尚不存在）。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        # PostgreSQL初始化
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS openai_keys (
+                id TEXT PRIMARY KEY,
+                api_key TEXT UNIQUE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'revoked')),
+                created_at TIMESTAMP NOT NULL,
+                last_used_at TIMESTAMP,
+                name TEXT,
+                total_requests INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        
+        # 检查列是否存在并添加（PostgreSQL方式）
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='openai_keys' AND column_name='total_requests'
+        """)
+        
+        if cursor.fetchone() is None:
+            cursor.execute("ALTER TABLE openai_keys ADD COLUMN total_requests INTEGER NOT NULL DEFAULT 0")
+            logger.info("已为现有的'openai_keys'表添加'total_requests'列。")
+    else:
+        # SQLite初始化（保持原样）
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS openai_keys (
+                id TEXT PRIMARY KEY,
+                api_key TEXT UNIQUE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'revoked')),
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                name TEXT,
+                total_requests INTEGER NOT NULL DEFAULT 0
+            )
         """
-        CREATE TABLE IF NOT EXISTS openai_keys (
-            id TEXT PRIMARY KEY,
-            api_key TEXT UNIQUE NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'revoked')),
-            created_at TEXT NOT NULL,
-            last_used_at TEXT,
-            name TEXT,
-            total_requests INTEGER NOT NULL DEFAULT 0
         )
-    """
-    )
-    # 检查并添加 total_requests 列（如果旧表存在且没有该列），用于向后兼容
-    cursor.execute("PRAGMA table_info(openai_keys)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if "total_requests" not in columns:
-        cursor.execute("ALTER TABLE openai_keys ADD COLUMN total_requests INTEGER NOT NULL DEFAULT 0")
-        logger.info("已为现有的'openai_keys'表添加'total_requests'列。")
+        # 检查并添加 total_requests 列（如果旧表存在且没有该列），用于向后兼容
+        cursor.execute("PRAGMA table_info(openai_keys)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if "total_requests" not in columns:
+            cursor.execute("ALTER TABLE openai_keys ADD COLUMN total_requests INTEGER NOT NULL DEFAULT 0")
+            logger.info("已为现有的'openai_keys'表添加'total_requests'列。")
+    
     conn.commit()
     conn.close()
-    logger.info(f"数据库 {DATABASE_NAME} 已初始化，如果不存在则创建了openai_keys表。")
+    logger.info(f"数据库已初始化，如果不存在则创建了openai_keys表。使用数据库类型: {DB_TYPE}")
+
+
+def _row_to_dict(row: Any) -> Optional[Dict[str, Any]]:
+    """将数据库行转换为字典。"""
+    if row is None:
+        return None
+    return dict(row)
 
 
 def add_api_key(api_key: str, name: Optional[str] = None, status: str = "active") -> str:
@@ -48,33 +108,48 @@ def add_api_key(api_key: str, name: Optional[str] = None, status: str = "active"
     conn = get_db_connection()
     cursor = conn.cursor()
     key_id = str(uuid.uuid4())
-    created_at = datetime.now().isoformat()
+    
     try:
-        cursor.execute(
-            "INSERT INTO openai_keys (id, api_key, status, created_at, name, total_requests) VALUES (?, ?, ?, ?, ?, ?)",
-            (key_id, api_key, status, created_at, name, 0),
-        )
+        if DB_TYPE in ["postgresql", "postgres"]:
+            created_at = datetime.now()  # PostgreSQL可以直接使用datetime对象
+            cursor.execute(
+                "INSERT INTO openai_keys (id, api_key, status, created_at, name, total_requests) VALUES (%s, %s, %s, %s, %s, %s)",
+                (key_id, api_key, status, created_at, name, 0),
+            )
+        else:
+            created_at = datetime.now().isoformat()  # SQLite使用ISO格式字符串
+            cursor.execute(
+                "INSERT INTO openai_keys (id, api_key, status, created_at, name, total_requests) VALUES (?, ?, ?, ?, ?, ?)",
+                (key_id, api_key, status, created_at, name, 0),
+            )
+        
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise ValueError(f"API密钥 {api_key} 已存在。")
+    except Exception as e:
+        if DB_TYPE in ["postgresql", "postgres"] and isinstance(e, psycopg2.IntegrityError):
+            conn.close()
+            raise ValueError(f"API密钥 {api_key} 已存在。")
+        elif isinstance(e, sqlite3.IntegrityError):
+            conn.close()
+            raise ValueError(f"API密钥 {api_key} 已存在。")
+        else:
+            conn.close()
+            raise e
     finally:
         conn.close()
+    
     return key_id
-
-
-def _row_to_dict(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
-    """将 sqlite3.Row 转换为字典。"""
-    if row is None:
-        return None
-    return dict(row)
 
 
 def get_api_key_by_id(key_id: str) -> Optional[Dict[str, Any]]:
     """根据 ID 获取 API Key。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM openai_keys WHERE id = ?", (key_id,))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        cursor.execute("SELECT * FROM openai_keys WHERE id = %s", (key_id,))
+    else:
+        cursor.execute("SELECT * FROM openai_keys WHERE id = ?", (key_id,))
+        
     key_data = cursor.fetchone()
     conn.close()
     return _row_to_dict(key_data)
@@ -84,7 +159,12 @@ def get_api_key_by_key_value(api_key_value: str) -> Optional[Dict[str, Any]]:
     """根据 API Key 的值获取 API Key。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM openai_keys WHERE api_key = ?", (api_key_value,))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        cursor.execute("SELECT * FROM openai_keys WHERE api_key = %s", (api_key_value,))
+    else:
+        cursor.execute("SELECT * FROM openai_keys WHERE api_key = ?", (api_key_value,))
+        
     key_data = cursor.fetchone()
     conn.close()
     return _row_to_dict(key_data)
@@ -121,18 +201,32 @@ def get_api_keys_paginated(
     params = []
 
     if status:
-        count_sql += " WHERE status = ?"
+        count_sql += " WHERE status = "
+        if DB_TYPE in ["postgresql", "postgres"]:
+            count_sql += "%s"
+        else:
+            count_sql += "?"
         params.append(status)
 
     cursor.execute(count_sql, params)
-    total_count = cursor.fetchone()[0]
+    count_result = cursor.fetchone()
+    total_count = count_result[0] if count_result else 0
 
     # 查询分页数据
     sql = "SELECT * FROM openai_keys"
     if status:
-        sql += " WHERE status = ?"
+        sql += " WHERE status = "
+        if DB_TYPE in ["postgresql", "postgres"]:
+            sql += "%s"
+        else:
+            sql += "?"
 
-    sql += " ORDER BY last_used_at DESC LIMIT ? OFFSET ?"
+    sql += " ORDER BY last_used_at DESC LIMIT "
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        sql += "%s OFFSET %s"
+    else:
+        sql += "? OFFSET ?"
 
     offset = (page - 1) * page_size
     params.append(page_size)
@@ -159,7 +253,12 @@ def update_api_key_status(key_id: str, status: str) -> bool:
     """更新 API Key 的状态。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE openai_keys SET status = ? WHERE id = ?", (status, key_id))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        cursor.execute("UPDATE openai_keys SET status = %s WHERE id = %s", (status, key_id))
+    else:
+        cursor.execute("UPDATE openai_keys SET status = ? WHERE id = ?", (status, key_id))
+        
     updated_rows = cursor.rowcount
     conn.commit()
     conn.close()
@@ -170,8 +269,14 @@ def update_api_key_last_used_at(key_id: str) -> bool:
     """更新 API Key 的 last_used_at 时间戳。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    last_used_at = datetime.now().isoformat()
-    cursor.execute("UPDATE openai_keys SET last_used_at = ? WHERE id = ?", (last_used_at, key_id))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        last_used_at = datetime.now()
+        cursor.execute("UPDATE openai_keys SET last_used_at = %s WHERE id = %s", (last_used_at, key_id))
+    else:
+        last_used_at = datetime.now().isoformat()
+        cursor.execute("UPDATE openai_keys SET last_used_at = ? WHERE id = ?", (last_used_at, key_id))
+        
     updated_rows = cursor.rowcount
     conn.commit()
     conn.close()
@@ -182,7 +287,12 @@ def update_api_key_name(key_id: str, name: str) -> bool:
     """更新 API Key 的名称。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE openai_keys SET name = ? WHERE id = ?", (name, key_id))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        cursor.execute("UPDATE openai_keys SET name = %s WHERE id = %s", (name, key_id))
+    else:
+        cursor.execute("UPDATE openai_keys SET name = ? WHERE id = ?", (name, key_id))
+        
     updated_rows = cursor.rowcount
     conn.commit()
     conn.close()
@@ -193,7 +303,12 @@ def delete_api_key(key_id: str) -> bool:
     """删除 API Key。"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM openai_keys WHERE id = ?", (key_id,))
+    
+    if DB_TYPE in ["postgresql", "postgres"]:
+        cursor.execute("DELETE FROM openai_keys WHERE id = %s", (key_id,))
+    else:
+        cursor.execute("DELETE FROM openai_keys WHERE id = ?", (key_id,))
+        
     deleted_rows = cursor.rowcount
     conn.commit()
     conn.close()
@@ -205,11 +320,20 @@ def increment_api_key_requests(key_id: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE openai_keys SET total_requests = total_requests + 1 WHERE id = ?", (key_id,))
+        if DB_TYPE in ["postgresql", "postgres"]:
+            cursor.execute("UPDATE openai_keys SET total_requests = total_requests + 1 WHERE id = %s", (key_id,))
+        else:
+            cursor.execute("UPDATE openai_keys SET total_requests = total_requests + 1 WHERE id = ?", (key_id,))
+            
         updated_rows = cursor.rowcount
         conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"增加API密钥请求计数时发生错误，密钥ID {key_id}: {e}")
+    except Exception as e:
+        if DB_TYPE in ["postgresql", "postgres"] and isinstance(e, psycopg2.Error):
+            logger.error(f"增加API密钥请求计数时发生错误，密钥ID {key_id}: {e}")
+        elif isinstance(e, sqlite3.Error):
+            logger.error(f"增加API密钥请求计数时发生错误，密钥ID {key_id}: {e}")
+        else:
+            logger.error(f"增加API密钥请求计数时发生未知错误，密钥ID {key_id}: {e}")
         conn.rollback()  # 错误时回滚
         return False
     finally:

@@ -273,13 +273,22 @@ async def get_all_openai_keys_endpoint():
     valid_keys = []
     invalid_keys = []
     for key_data in all_keys_from_db:
+        # 对于可能是datetime的字段，转换为字符串
+        created_at_value = key_data.get("created_at")
+        if created_at_value and isinstance(created_at_value, datetime):
+            created_at_value = created_at_value.isoformat()
+
+        last_used_at_value = key_data.get("last_used_at")
+        if last_used_at_value and isinstance(last_used_at_value, datetime):
+            last_used_at_value = last_used_at_value.isoformat()
+            
         key_display = schemas.OpenAIKeyDisplay(
             id=key_data["id"],
             api_key_masked=utils.mask_api_key_for_display(key_data["api_key"]),
             status=key_data["status"],
             name=key_data.get("name"),
-            created_at=key_data.get("created_at"),
-            last_used_at=key_data.get("last_used_at"),
+            created_at=created_at_value,
+            last_used_at=last_used_at_value,
             total_requests=key_data.get("total_requests", 0),
         )
         if key_data["status"] == config.KEY_STATUS_ACTIVE:
@@ -299,14 +308,23 @@ async def get_paginated_openai_keys_endpoint(page_params: schemas.PageParams = D
 
     items = []
     for key_data in keys_data:
+        # 对于可能是datetime的字段，转换为字符串
+        created_at_value = key_data.get("created_at")
+        if created_at_value and isinstance(created_at_value, datetime):
+            created_at_value = created_at_value.isoformat()
+
+        last_used_at_value = key_data.get("last_used_at")
+        if last_used_at_value and isinstance(last_used_at_value, datetime):
+            last_used_at_value = last_used_at_value.isoformat()
+
         items.append(
             schemas.OpenAIKeyDisplay(
                 id=key_data["id"],
                 api_key_masked=utils.mask_api_key_for_display(key_data["api_key"]),
                 status=key_data["status"],
                 name=key_data.get("name"),
-                created_at=key_data.get("created_at"),
-                last_used_at=key_data.get("last_used_at"),
+                created_at=created_at_value,
+                last_used_at=last_used_at_value,
                 total_requests=key_data.get("total_requests", 0),
             )
         )
@@ -343,13 +361,22 @@ async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
         if not added_key_data:
             raise HTTPException(status_code=500, detail="添加后无法检索密钥。")
 
+        # 对于可能是datetime的字段，转换为字符串
+        created_at_value = added_key_data.get("created_at")
+        if created_at_value and isinstance(created_at_value, datetime):
+            created_at_value = created_at_value.isoformat()
+
+        last_used_at_value = added_key_data.get("last_used_at")
+        if last_used_at_value and isinstance(last_used_at_value, datetime):
+            last_used_at_value = last_used_at_value.isoformat()
+
         return schemas.OpenAIKeyDisplay(
             id=added_key_data["id"],
             api_key_masked=utils.mask_api_key_for_display(added_key_data["api_key"]),
             status=added_key_data["status"],
             name=added_key_data.get("name"),
-            created_at=added_key_data.get("created_at"),
-            last_used_at=added_key_data.get("last_used_at"),
+            created_at=created_at_value,
+            last_used_at=last_used_at_value,
             total_requests=added_key_data.get("total_requests", 0),
         )
     except ValueError as e:

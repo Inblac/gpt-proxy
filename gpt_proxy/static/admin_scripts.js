@@ -675,16 +675,20 @@ async function addOpenAiKeys() {
         await loadStats();
         await loadValidKeys(1, validKeysPageSize);
         await loadInvalidKeys(1, invalidKeysPageSize);
-
-        if (result.error_count > 0) {
+        
+        // 计算成功和失败数量
+        const successCount = result.results.filter(r => r.success).length;
+        const errorCount = result.results.filter(r => !r.success).length;
+        
+        if (errorCount > 0) {
             const errorDetails = result.results
                 .filter(r => !r.success)
-                .map(r => `Key ${r.key_suffix} 添加失败: ${r.error_message}`)
+                .map(r => `Key ${r.key} 添加失败`)
                 .join('\n');
             
-            showKeyManagementError(`批量添加完成: ${result.success_count} 个成功, ${result.error_count} 个失败。\n失败详情:\n${errorDetails}`);
+            showKeyManagementError(`批量添加完成: ${successCount} 个成功, ${errorCount} 个失败。\n失败详情:\n${errorDetails}`);
         } else {
-            alert(`成功添加 ${result.success_count} 个 Key。`);
+            alert(`成功添加 ${successCount} 个 Key。`);
         }
     } catch (error) {
         document.getElementById('loading').classList.add('hidden');

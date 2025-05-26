@@ -8,6 +8,10 @@ KEY_STATUS_ACTIVE = "active"
 KEY_STATUS_INACTIVE = "inactive"
 KEY_STATUS_REVOKED = "revoked"
 
+# 数据库配置
+DB_TYPE = "sqlite"  # 默认使用sqlite
+DB_CONNECTION_PARAMS = {}  # 默认连接参数为空
+
 # OpenAI API 端点
 OPENAI_API_ENDPOINT: str = "https://api.openai.com/v1/chat/completions"
 OPENAI_VALIDATION_ENDPOINT: str = "https://api.openai.com/v1/models"
@@ -34,7 +38,9 @@ CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 def load_app_config():
     """从config.ini文件加载应用配置"""
-    global PROXY_API_KEYS, JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES, APP_CONFIG_MAX_RETRIES, OPENAI_API_ENDPOINT, OPENAI_VALIDATION_ENDPOINT, PROXY_API_KEY_HEADER, MAX_CALLS_PER_KEY_PER_WINDOW, USAGE_WINDOW_SECONDS
+    global PROXY_API_KEYS, JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES, APP_CONFIG_MAX_RETRIES
+    global OPENAI_API_ENDPOINT, OPENAI_VALIDATION_ENDPOINT, PROXY_API_KEY_HEADER
+    global MAX_CALLS_PER_KEY_PER_WINDOW, USAGE_WINDOW_SECONDS, DB_TYPE, DB_CONNECTION_PARAMS
 
     config_parser = configparser.ConfigParser()
     if not os.path.exists(CONFIG_FILE_PATH):
@@ -126,6 +132,23 @@ def load_app_config():
             )
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[OpenAI_API_Keys_Config]部分。将使用默认轮换配置。")
+            
+        # 加载数据库配置
+        if "Database" in config_parser:
+            DB_TYPE = config_parser["Database"].get("type", DB_TYPE).lower()
+            logger.info(f"数据库类型设置为: '{DB_TYPE}'")
+            
+            if DB_TYPE in ["postgresql", "postgres"]:
+                DB_CONNECTION_PARAMS = {
+                    "host": config_parser["Database"].get("host", "localhost"),
+                    "port": config_parser["Database"].getint("port", 5432),
+                    "database": config_parser["Database"].get("database", "gpt_proxy"),
+                    "user": config_parser["Database"].get("user", "postgres"),
+                    "password": config_parser["Database"].get("password", ""),
+                }
+                logger.info(f"已加载PostgreSQL连接参数: 主机={DB_CONNECTION_PARAMS['host']}, 端口={DB_CONNECTION_PARAMS['port']}, 数据库={DB_CONNECTION_PARAMS['database']}")
+        else:
+            logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[Database]部分。将使用默认SQLite数据库。")
 
     except configparser.Error as e:
         logger.error(f"解析配置文件 '{CONFIG_FILE_PATH}' 失败: {e}")
