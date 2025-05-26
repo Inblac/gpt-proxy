@@ -6,20 +6,37 @@ import os
 from . import logger
 from .config import DB_TYPE, DB_CONNECTION_PARAMS
 
+# 导入异步数据库库
+import asyncio
+from functools import wraps
+
 # 如果配置了PostgreSQL，导入psycopg2
 if DB_TYPE in ["postgresql", "postgres"]:
     try:
         import psycopg2
         from psycopg2.extras import DictCursor
+        # 导入asyncpg用于异步PostgreSQL操作
+        import asyncpg
     except ImportError:
         logger.error("未安装psycopg2模块。请使用 'pip install psycopg2-binary' 安装它以使用PostgreSQL。")
         raise ImportError("未安装psycopg2模块。请使用 'pip install psycopg2-binary' 安装它以使用PostgreSQL。")
+
+# 导入aiosqlite用于异步SQLite操作
+try:
+    import aiosqlite
+except ImportError:
+    logger.error("未安装aiosqlite模块。请使用 'pip install aiosqlite' 安装它以支持异步SQLite操作。")
+    raise ImportError("未安装aiosqlite模块。请使用 'pip install aiosqlite' 安装它以支持异步SQLite操作。")
 
 DATABASE_NAME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "gpt_proxy.db")
 
 # 定义通用的行类型
 RowType = TypeVar('RowType', sqlite3.Row, Dict[str, Any])
 
+# 异步函数执行器，用于在异步环境中运行同步函数
+async def run_sync(func, *args, **kwargs):
+    """在异步环境中运行同步函数"""
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 def get_db_connection():
     """创建并返回一个数据库连接。"""
@@ -37,6 +54,22 @@ def get_db_connection():
     else:  # 默认使用SQLite
         conn = sqlite3.connect(DATABASE_NAME)
         conn.row_factory = sqlite3.Row  # 允许通过列名访问数据（使结果行为类似字典）
+        return conn
+
+async def get_db_connection_async():
+    """创建并返回一个异步数据库连接。"""
+    if DB_TYPE in ["postgresql", "postgres"]:
+        conn = await asyncpg.connect(
+            host=DB_CONNECTION_PARAMS.get("host", "localhost"),
+            port=DB_CONNECTION_PARAMS.get("port", 5432),
+            database=DB_CONNECTION_PARAMS.get("database", "gpt_proxy"),
+            user=DB_CONNECTION_PARAMS.get("user", "postgres"),
+            password=DB_CONNECTION_PARAMS.get("password", ""),
+        )
+        return conn
+    else:  # 默认使用SQLite
+        conn = await aiosqlite.connect(DATABASE_NAME)
+        conn.row_factory = aiosqlite.Row  # 允许通过列名访问数据
         return conn
 
 
@@ -340,6 +373,73 @@ def increment_api_key_requests(key_id: str) -> bool:
         conn.close()
     return updated_rows > 0
 
+
+# 添加异步版本的数据库函数
+async def update_api_key_last_used_at_async(key_id: str) -> bool:
+    """异步更新 API Key 的 last_used_at 时间戳。"""
+    conn = await get_db_connection_async()
+    try:
+        if DB_TYPE in ["postgresql", "postgres"]:
+            last_used_at = datetime.now()
+            # PostgreSQL 异步操作
+            await conn.execute("UPDATE openai_keys SET last_used_at = $1 WHERE id = $2", last_used_at, key_id)
+            return True  # PostgreSQL 异步操作无法获取影响的行数，假设成功
+        else:
+            # SQLite 异步操作
+            last_used_at = datetime.now().isoformat()
+            cursor = await conn.execute("UPDATE openai_keys SET last_used_at = ? WHERE id = ?", (last_used_at, key_id))
+            await conn.commit()
+            # SQLite 异步操作中没有直接的 rowcount 属性，返回成功
+            return True
+    except Exception as e:
+        logger.error(f"异步更新API密钥最后使用时间时发生错误，密钥ID {key_id}: {e}")
+        if DB_TYPE not in ["postgresql", "postgres"]:
+            await conn.rollback()
+        return False
+    finally:
+        await conn.close()
+
+async def increment_api_key_requests_async(key_id: str) -> bool:
+    """异步将指定 API Key 的 total_requests 计数加 1。"""
+    conn = await get_db_connection_async()
+    try:
+        if DB_TYPE in ["postgresql", "postgres"]:
+            # PostgreSQL 异步操作
+            await conn.execute("UPDATE openai_keys SET total_requests = total_requests + 1 WHERE id = $1", key_id)
+            return True  # 假设成功
+        else:
+            # SQLite 异步操作
+            await conn.execute("UPDATE openai_keys SET total_requests = total_requests + 1 WHERE id = ?", (key_id,))
+            await conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"异步增加API密钥请求计数时发生错误，密钥ID {key_id}: {e}")
+        if DB_TYPE not in ["postgresql", "postgres"]:
+            await conn.rollback()
+        return False
+    finally:
+        await conn.close()
+
+async def update_api_key_status_async(key_id: str, status: str) -> bool:
+    """异步更新 API Key 的状态。"""
+    conn = await get_db_connection_async()
+    try:
+        if DB_TYPE in ["postgresql", "postgres"]:
+            # PostgreSQL 异步操作
+            await conn.execute("UPDATE openai_keys SET status = $1 WHERE id = $2", status, key_id)
+            return True  # 假设成功
+        else:
+            # SQLite 异步操作
+            await conn.execute("UPDATE openai_keys SET status = ? WHERE id = ?", (status, key_id))
+            await conn.commit()
+            return True
+    except Exception as e:
+        logger.error(f"异步更新API密钥状态时发生错误，密钥ID {key_id}: {e}")
+        if DB_TYPE not in ["postgresql", "postgres"]:
+            await conn.rollback()
+        return False
+    finally:
+        await conn.close()
 
 # 模块导入时初始化数据库并创建表（如果不存在），确保数据库在其他模块访问前准备就绪。
 init_db()

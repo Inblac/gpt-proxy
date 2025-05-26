@@ -73,10 +73,10 @@ async def chat_completions_proxy(
                                         logger.info(
                                             f"流式请求成功启动，使用Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log})。"
                                         )
-                                        # 记录API Key使用情况
+                                        # 记录API Key使用情况 - 使用异步方法
                                         utils.record_api_key_usage(str_key_id)
-                                        db.update_api_key_last_used_at(str_key_id)
-                                        db.increment_api_key_requests(str_key_id)  # 增加请求计数
+                                        await db.update_api_key_last_used_at_async(str_key_id)
+                                        await db.increment_api_key_requests_async(str_key_id)  # 异步增加请求计数
 
                                         async for chunk in response.aiter_bytes():
                                             yield chunk
@@ -95,7 +95,7 @@ async def chat_completions_proxy(
                                             f"流式请求初始化错误，Key ID: {str_key_id} (名称: {key_name_log}, 后缀: {key_short_log}): {response.status_code} - {error_text}"
                                         )
                                         if response.status_code in [401, 403, 429]:  # 特定错误码，禁用Key
-                                            db.update_api_key_status(str_key_id, config.KEY_STATUS_INACTIVE)
+                                            await db.update_api_key_status_async(str_key_id, config.KEY_STATUS_INACTIVE)
                                             logger.info(
                                                 f"Key ID {str_key_id} (名称: {key_name_log}) 因API错误{response.status_code}被设为'{config.KEY_STATUS_INACTIVE}'。"
                                             )
@@ -132,8 +132,9 @@ async def chat_completions_proxy(
                     )
                     if response.status_code == 200:
                         utils.record_api_key_usage(str(key_id_for_db))
-                        db.update_api_key_last_used_at(str(key_id_for_db))
-                        db.increment_api_key_requests(str(key_id_for_db))  # 增加请求计数
+                        # 使用异步数据库操作
+                        await db.update_api_key_last_used_at_async(str(key_id_for_db))
+                        await db.increment_api_key_requests_async(str(key_id_for_db))  # 异步增加请求计数
                         logger.info(
                             f"非流式请求成功，使用Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})."
                         )
@@ -144,7 +145,8 @@ async def chat_completions_proxy(
                             f"非流式请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
                         )
                         if response.status_code in [401, 403, 429] and key_id_for_db:
-                            db.update_api_key_status(str(key_id_for_db), config.KEY_STATUS_INACTIVE)
+                            # 使用异步方法更新状态
+                            await db.update_api_key_status_async(str(key_id_for_db), config.KEY_STATUS_INACTIVE)
                             logger.info(
                                 f"Key ID {key_id_for_db} (名称: {key_name_for_log}) 因API错误{response.status_code}被设为'{config.KEY_STATUS_INACTIVE}'。"
                             )
@@ -161,7 +163,8 @@ async def chat_completions_proxy(
                     f"RequestError (Key ID: {log_key_id_display}, 名称: {key_name_for_error_log}, 后缀: {key_short_for_error}): {e}"
                 )
                 if key_id_for_db_error:  # 如果获取到了Key，则禁用
-                    db.update_api_key_status(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)
+                    # 使用异步方法更新状态
+                    await db.update_api_key_status_async(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)
                     logger.info(
                         f"Key ID {key_id_for_db_error} (名称: {key_name_for_error_log}) 因RequestError被设为'{config.KEY_STATUS_INACTIVE}'。"
                     )
@@ -224,8 +227,9 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
 
                 if response.status_code == 200:
                     utils.record_api_key_usage(str(key_id_for_db))
-                    db.update_api_key_last_used_at(str(key_id_for_db))
-                    db.increment_api_key_requests(str(key_id_for_db))  # 增加请求计数
+                    # 使用异步数据库操作
+                    await db.update_api_key_last_used_at_async(str(key_id_for_db))
+                    await db.increment_api_key_requests_async(str(key_id_for_db))  # 异步增加请求计数
                     logger.info(
                         f"/v1/models请求成功，使用Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short})。"
                     )
@@ -236,7 +240,8 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                         f"/v1/models请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
                     )
                     if response.status_code in [401, 403, 429] and key_id_for_db:
-                        db.update_api_key_status(str(key_id_for_db), config.KEY_STATUS_INACTIVE)
+                        # 使用异步方法更新状态
+                        await db.update_api_key_status_async(str(key_id_for_db), config.KEY_STATUS_INACTIVE)
                         logger.info(
                             f"Key ID {key_id_for_db} (名称: {key_name_for_log}) 因API错误{response.status_code} (Models API)被设为'{config.KEY_STATUS_INACTIVE}'。"
                         )
@@ -253,7 +258,8 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                     f"Models API RequestError (Key ID: {log_key_id_display}, 名称: {key_name_for_error_log}, 后缀: {key_short_for_error}): {e}"
                 )
                 if key_id_for_db_error:  # 如果获取到了Key，则禁用
-                    db.update_api_key_status(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)
+                    # 使用异步方法更新状态
+                    await db.update_api_key_status_async(str(key_id_for_db_error), config.KEY_STATUS_INACTIVE)
                     logger.info(
                         f"Key ID {key_id_for_db_error} (名称: {key_name_for_error_log}) 因RequestError (Models API)被设为'{config.KEY_STATUS_INACTIVE}'。"
                     )
