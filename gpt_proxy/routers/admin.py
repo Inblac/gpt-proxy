@@ -25,7 +25,7 @@ router = APIRouter(
 async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies.get_current_admin_user)):
     """重新验证所有标记为无效的API Key - 使用聊天接口验证"""
     # 获取所有无效的密钥
-    inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]
+    inactive_keys = await db.get_inactive_api_keys()
     logger.info(f"尝试使用聊天接口验证 {len(inactive_keys)} 个无效密钥。")
 
     # 使用客户端测试每个API密钥
@@ -54,7 +54,9 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
 
                 if resp.status_code == 200:
                     # 密钥有效，将其设置为活动状态
-                    db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+                    await db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+                    # 记录成功的验证请求
+                    await utils.record_api_key_usage(key_id, model="gpt-4.1-mini", status="validation_success")
                     logger.info(
                         f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 使用聊天接口重新验证成功。状态已更新为 '{config.KEY_STATUS_ACTIVE}'。"
                     )
@@ -74,6 +76,9 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                         error_detail = resp.json().get("error", {}).get("message", "未知错误")
                     except:
                         error_detail = f"HTTP {resp.status_code}"
+                    
+                    # 记录失败的验证请求
+                    await utils.record_api_key_usage(key_id, model="gpt-4.1-mini", status=f"validation_failed_{resp.status_code}")
 
                     logger.warning(
                         f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证失败，状态码 {resp.status_code}。错误: {error_detail}"
@@ -90,6 +95,9 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                         }
                     )
             except Exception as e:
+                # 记录异常的验证请求
+                await utils.record_api_key_usage(key_id, model="gpt-4.1-mini", status="validation_error")
+                
                 logger.error(f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 重新验证请求错误: {e}")
                 validation_results.append(
                     {
@@ -103,7 +111,7 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
                 )
 
     # 更新OpenAI密钥循环以反映新的有效密钥
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
     return {"message": f"验证了 {len(inactive_keys)} 个无效的密钥", "results": validation_results}
 
 
@@ -111,7 +119,7 @@ async def revalidate_all_inactive_keys(current_user: dict = Depends(dependencies
 async def validate_single_key(key_id: str, current_user: dict = Depends(dependencies.get_current_admin_user)):
     """验证单个API Key的有效性 - 使用聊天接口验证"""
     # 获取指定的密钥
-    key = db.get_api_key_by_id(key_id)
+    key = await db.get_api_key_by_id(key_id)
     if not key:
         raise HTTPException(status_code=404, detail=f"未找到ID为 {key_id} 的API Key")
     
@@ -139,12 +147,14 @@ async def validate_single_key(key_id: str, current_user: dict = Depends(dependen
 
             if resp.status_code == 200:
                 # 密钥有效，将其设置为活动状态
-                db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+                await db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+                # 记录成功的验证请求
+                await utils.record_api_key_usage(key_id, model="gpt-4o-mini", status="validation_success")
                 logger.info(
                     f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证成功。状态已更新为 '{config.KEY_STATUS_ACTIVE}'。"
                 )
                 # 更新OpenAI密钥循环以反映新的有效密钥
-                utils.update_openai_key_cycle()
+                await utils.update_openai_key_cycle()
                 
                 return {
                     "success": True,
@@ -158,14 +168,17 @@ async def validate_single_key(key_id: str, current_user: dict = Depends(dependen
             else:
                 # 密钥无效，确保状态为无效
                 if key["status"] != config.KEY_STATUS_INACTIVE:
-                    db.update_api_key_status(key_id, config.KEY_STATUS_INACTIVE)
-                    utils.update_openai_key_cycle()
+                    await db.update_api_key_status(key_id, config.KEY_STATUS_INACTIVE)
+                    await utils.update_openai_key_cycle()
                 
                 try:
                     error_detail = resp.json().get("error", {}).get("message", "未知错误")
                 except:
                     error_detail = f"HTTP {resp.status_code}"
 
+                # 记录失败的验证请求
+                await utils.record_api_key_usage(key_id, model="gpt-4o-mini", status=f"validation_failed_{resp.status_code}")
+                
                 logger.warning(
                     f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证失败，状态码 {resp.status_code}。错误: {error_detail}"
                 )
@@ -182,6 +195,9 @@ async def validate_single_key(key_id: str, current_user: dict = Depends(dependen
                 }
                 
     except Exception as e:
+        # 记录异常的验证请求
+        await utils.record_api_key_usage(key_id, model="gpt-4o-mini", status="validation_error")
+        
         logger.error(f"密钥ID {key_id} (名称: {key_name}, 后缀: {key_suffix}) 验证请求错误: {e}")
         return {
             "success": False,
@@ -196,72 +212,18 @@ async def validate_single_key(key_id: str, current_user: dict = Depends(dependen
 
 @router.get("/stats", response_model=schemas.GlobalStatsResponse)
 async def get_api_key_stats_endpoint():
-    all_db_keys = db.get_all_api_keys()
-    now = datetime.utcnow()
-    one_minute_ago = now - timedelta(minutes=1)
-    one_hour_ago = now - timedelta(hours=1)
-    twenty_four_hours_ago = now - timedelta(hours=24)
-
-    grand_total_requests_all_time = 0
-    grand_total_usage_last_1m = 0
-    grand_total_usage_last_1h = 0
-    grand_total_usage_last_24h = 0
-    active_keys_count = 0
-    inactive_keys_count = 0
-    revoked_keys_count = 0
-
-    # 如果密钥已从数据库中删除，则从内存中清除过时的使用数据
-    valid_key_ids_from_db = {key["id"] for key in all_db_keys}
-    current_usage_key_ids = list(utils.api_key_usage.keys())
-    for kid_to_clean in current_usage_key_ids:
-        if kid_to_clean not in valid_key_ids_from_db:
-            if kid_to_clean in utils.api_key_usage:
-                del utils.api_key_usage[kid_to_clean]
-                print(f"已清理已删除密钥ID的过期使用数据: {kid_to_clean}")
-
-    for key_data in all_db_keys:
-        key_id = key_data["id"]
-
-        grand_total_requests_all_time += key_data.get("total_requests", 0)
-
-        if key_id in utils.api_key_usage:
-            timestamps: utils.Deque[datetime] = utils.api_key_usage[key_id]
-
-            # 清理旧数据，防止双端队列无限增长
-            cutoff_24h = now - timedelta(seconds=utils.USAGE_WINDOW_SECONDS)
-            while timestamps and timestamps[0] < cutoff_24h:
-                timestamps.popleft()
-            while len(timestamps) > utils.MAX_TIMESTAMPS_PER_KEY:
-                timestamps.popleft()
-
-            # 统计不同时间窗口的使用次数
-            for ts in timestamps:
-                if ts >= twenty_four_hours_ago:
-                    grand_total_usage_last_24h += 1
-                    if ts >= one_hour_ago:
-                        grand_total_usage_last_1h += 1
-                        if ts >= one_minute_ago:
-                            grand_total_usage_last_1m += 1
-
-        status = key_data.get("status")
-        if status == config.KEY_STATUS_ACTIVE:
-            active_keys_count += 1
-        elif status == config.KEY_STATUS_INACTIVE:
-            inactive_keys_count += 1
-        elif status == config.KEY_STATUS_REVOKED:
-            revoked_keys_count += 1
-
-    total_keys_count = len(all_db_keys)
-
+    # 从数据库中获取统计数据
+    stats_data = await db.get_api_stats()
+    
     global_stats_data = schemas.GlobalStats(
-        grand_total_requests_all_time=grand_total_requests_all_time,
-        grand_total_usage_last_1m=grand_total_usage_last_1m,
-        grand_total_usage_last_1h=grand_total_usage_last_1h,
-        grand_total_usage_last_24h=grand_total_usage_last_24h,
-        active_keys_count=active_keys_count,
-        inactive_keys_count=inactive_keys_count,
-        revoked_keys_count=revoked_keys_count,
-        total_keys_count=total_keys_count,
+        grand_total_requests_all_time=stats_data["grand_total_requests_all_time"],
+        grand_total_usage_last_1m=stats_data["grand_total_usage_last_1m"],
+        grand_total_usage_last_1h=stats_data["grand_total_usage_last_1h"],
+        grand_total_usage_last_24h=stats_data["grand_total_usage_last_24h"],
+        active_keys_count=stats_data["active_keys_count"],
+        inactive_keys_count=stats_data["inactive_keys_count"],
+        revoked_keys_count=stats_data["revoked_keys_count"],
+        total_keys_count=stats_data["total_keys_count"],
     )
 
     return schemas.GlobalStatsResponse(global_stats=global_stats_data)
@@ -269,7 +231,7 @@ async def get_api_key_stats_endpoint():
 
 @router.get("/keys", response_model=schemas.CategorizedOpenAIKeys)
 async def get_all_openai_keys_endpoint():
-    all_keys_from_db = db.get_all_api_keys()
+    all_keys_from_db = await db.get_all_api_keys()
     valid_keys = []
     invalid_keys = []
     for key_data in all_keys_from_db:
@@ -302,7 +264,7 @@ async def get_all_openai_keys_endpoint():
 @router.get("/keys/paginated", response_model=schemas.PaginatedOpenAIKeys)
 async def get_paginated_openai_keys_endpoint(page_params: schemas.PageParams = Depends()):
     """获取分页的API Keys列表"""
-    keys_data, total_count = db.get_api_keys_paginated(
+    keys_data, total_count = await db.get_api_keys_paginated(
         page=page_params.page, page_size=page_params.page_size, status=page_params.status
     )
 
@@ -346,7 +308,7 @@ async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
     if not new_key_value.startswith("sk-"):
         raise HTTPException(status_code=400, detail="无效的OpenAI API密钥格式。必须以'sk-'开头。")
 
-    existing_key_by_val = db.get_api_key_by_key_value(new_key_value)
+    existing_key_by_val = await db.get_api_key_by_key_value(new_key_value)
     if existing_key_by_val:
         raise HTTPException(
             status_code=409,
@@ -354,10 +316,10 @@ async def add_openai_key_endpoint(payload: schemas.NewOpenAIKeyPayload):
         )
 
     try:
-        key_id = db.add_api_key(api_key=new_key_value, name=key_name, status=config.KEY_STATUS_ACTIVE)
-        utils.update_openai_key_cycle()
+        key_id = await db.add_api_key(api_key=new_key_value, name=key_name, status=config.KEY_STATUS_ACTIVE)
+        await utils.update_openai_key_cycle()
 
-        added_key_data = db.get_api_key_by_id(key_id)
+        added_key_data = await db.get_api_key_by_id(key_id)
         if not added_key_data:
             raise HTTPException(status_code=500, detail="添加后无法检索密钥。")
 
@@ -403,14 +365,14 @@ async def create_api_keys_bulk(
         name = parts[1].strip() if len(parts) > 1 else None
 
         try:
-            key_id = db.add_api_key(api_key, name=name)
+            key_id = await db.add_api_key(api_key, name=name)
             results.append({"key": api_key[-4:], "id": key_id, "name": name, "success": True})
         except ValueError as e:
             logger.error(f"添加API密钥时出错: {e}")
             results.append({"key": api_key[-4:], "error": str(e), "success": False})
 
     # 更新OpenAI密钥循环
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
     return {"message": f"处理了 {len(results)} 个API密钥", "results": results}
 
 
@@ -418,12 +380,12 @@ async def create_api_keys_bulk(
 async def delete_api_key(key_id: str, current_user: dict = Depends(dependencies.get_current_admin_user)):
     """删除API密钥"""
     # 先检查密钥是否存在
-    key_to_delete = db.get_api_key_by_id(key_id)
+    key_to_delete = await db.get_api_key_by_id(key_id)
     if not key_to_delete:
         raise HTTPException(status_code=404, detail=f"未找到ID为'{key_id}'的API密钥。")
 
     # 尝试删除密钥
-    success = db.delete_api_key(key_id)
+    success = await db.delete_api_key(key_id)
     if not success:
         raise HTTPException(status_code=500, detail=f"虽然找到了ID为'{key_id}'的API密钥，但无法从数据库中删除。")
 
@@ -435,7 +397,7 @@ async def delete_api_key(key_id: str, current_user: dict = Depends(dependencies.
         logger.info(f"已移除已删除密钥ID '{key_id}' 的使用跟踪。")
 
     # 更新OpenAI密钥循环
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
     return {"message": f"API密钥ID '{key_id}' 删除成功。"}
 
 
@@ -454,19 +416,19 @@ async def update_api_key_status(
         )
 
     # 检查密钥是否存在
-    key_to_update = db.get_api_key_by_id(key_id)
+    key_to_update = await db.get_api_key_by_id(key_id)
     if not key_to_update:
         raise HTTPException(status_code=404, detail=f"未找到ID为'{key_id}'的API密钥。")
 
     # 更新状态
-    success = db.update_api_key_status(key_id, new_status)
+    success = await db.update_api_key_status(key_id, new_status)
     if not success:
         raise HTTPException(status_code=500, detail=f"无法更新ID为'{key_id}'的API密钥状态。")
 
     logger.info(f"API密钥ID '{key_id}' (名称: {key_to_update.get('name', 'N/A')}) 状态已更新为 '{new_status}'。")
 
     # 更新OpenAI密钥循环
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
     return {"message": f"API密钥ID '{key_id}' 状态已更新为 '{new_status}'。"}
 
 
@@ -480,12 +442,12 @@ async def update_api_key_name(
     new_name = name_update.name
 
     # 检查密钥是否存在
-    key_to_update = db.get_api_key_by_id(key_id)
+    key_to_update = await db.get_api_key_by_id(key_id)
     if not key_to_update:
         raise HTTPException(status_code=404, detail=f"未找到ID为'{key_id}'的API密钥。")
 
     # 更新名称
-    success = db.update_api_key_name(key_id, new_name)
+    success = await db.update_api_key_name(key_id, new_name)
     if not success:
         raise HTTPException(status_code=500, detail=f"无法更新ID为'{key_id}'的API密钥名称。")
 
@@ -496,13 +458,13 @@ async def update_api_key_name(
 @router.post("/keys/reset_all_keys", tags=["Admin API Keys Management"])
 async def reset_all_inactive_keys_to_active(current_user: dict = Depends(dependencies.get_current_admin_user)):
     """将所有状态为'inactive'的密钥重置为'active'"""
-    inactive_keys = [key for key in db.get_all_api_keys() if key["status"] == config.KEY_STATUS_INACTIVE]
+    inactive_keys = await db.get_inactive_api_keys()
     results = []
 
     for key in inactive_keys:
         key_id = key["id"]
         try:
-            success = db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
+            success = await db.update_api_key_status(key_id, config.KEY_STATUS_ACTIVE)
             if success:
                 results.append({"key_id": key_id, "name": key.get("name"), "success": True})
                 logger.info(
@@ -515,14 +477,14 @@ async def reset_all_inactive_keys_to_active(current_user: dict = Depends(depende
             results.append({"key_id": key_id, "name": key.get("name"), "success": False, "error": str(e)})
 
     # 更新OpenAI密钥循环
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
     return {"message": f"尝试重置 {len(inactive_keys)} 个无效密钥为有效状态", "results": results}
 
 
 @router.post("/cleanup-usage", tags=["Admin API Keys Management"])
 async def cleanup_usage_tracking_data(current_user: dict = Depends(dependencies.get_current_admin_user)):
     """清理内存中的使用情况跟踪数据，删除不再存在于数据库中的密钥的使用情况"""
-    active_keys = {key["id"] for key in db.get_all_api_keys()}  # 现有密钥ID的集合
+    active_keys = {key["id"] for key in await db.get_all_api_keys()}  # 现有密钥ID的集合
     usage_keys = set(utils.api_key_usage.keys())  # 内存中跟踪的密钥ID
 
     to_cleanup = usage_keys - active_keys  # 在使用情况中但不在数据库中的密钥
@@ -533,3 +495,19 @@ async def cleanup_usage_tracking_data(current_user: dict = Depends(dependencies.
             logger.info(f"已清理已删除密钥ID的过期使用数据: {kid_to_clean}")
 
     return {"message": f"清理了 {len(to_cleanup)} 个不存在的密钥的使用情况数据", "cleaned_key_ids": list(to_cleanup)}
+
+
+@router.post("/cleanup-logs", tags=["Admin API Logs Management"])
+async def cleanup_api_request_logs(
+    days_to_keep: int = 7, current_user: dict = Depends(dependencies.get_current_admin_user)
+):
+    """清理旧的API请求日志记录"""
+    if days_to_keep < 1:
+        raise HTTPException(status_code=400, detail="保留天数必须大于等于1")
+    
+    deleted_count = await db.clean_old_api_request_logs(days_to_keep)
+    return {
+        "message": f"已清理API请求日志", 
+        "deleted_count": deleted_count,
+        "retention_days": days_to_keep
+    }

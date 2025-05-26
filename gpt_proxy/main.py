@@ -12,6 +12,7 @@ from . import config
 from . import utils
 from .routers import chat, admin
 from . import logger
+from . import database as db
 
 
 # 应用设置
@@ -97,13 +98,21 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 async def startup_event():
     """应用启动：初始化数据库和加载配置"""
-    logger.info("应用启动：数据库已在模块导入时初始化。")
-
+    logger.info("应用启动：初始化数据库连接。")
+    await db.connect_to_db()
+    
     logger.info("应用启动：正在从数据库更新OpenAI密钥循环。")
     utils.api_key_usage.clear()
-    utils.update_openai_key_cycle()
+    await utils.update_openai_key_cycle()
 
     logger.info("应用启动：代理API密钥已在配置模块导入时加载。")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭：断开数据库连接"""
+    logger.info("应用关闭：断开数据库连接。")
+    await db.disconnect_from_db()
 
 
 # --- 辅助函数 ---

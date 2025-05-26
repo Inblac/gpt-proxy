@@ -4,6 +4,7 @@ from collections import deque
 from typing import Dict, Any, Optional, Deque
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+import asyncio
 
 from fastapi import HTTPException
 
@@ -18,10 +19,10 @@ MAX_TIMESTAMPS_PER_KEY = 10000
 USAGE_WINDOW_SECONDS = 24 * 60 * 60
 
 
-def update_openai_key_cycle() -> int:
+async def update_openai_key_cycle() -> int:
     """从数据库更新活动的OpenAI API密钥循环，返回找到的活动密钥数量"""
     global _active_key_configs_cycle
-    active_keys = db.get_active_api_keys()
+    active_keys = await db.get_active_api_keys()
     active_key_count = len(active_keys)
 
     if active_keys:
@@ -33,13 +34,13 @@ def update_openai_key_cycle() -> int:
     return active_key_count
 
 
-def get_next_openai_key_config() -> Optional[Dict[str, Any]]:
+async def get_next_openai_key_config() -> Optional[Dict[str, Any]]:
     """获取下一个可用的OpenAI API密钥配置，无可用密钥时返回None"""
     # 在API密钥循环为空的情况下，尝试从数据库刷新
     active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
     if not active_key_configs:
         logger.warning("API密钥循环为空。正在尝试刷新。")
-        active_key_count = update_openai_key_cycle()
+        active_key_count = await update_openai_key_cycle()
         if active_key_count > 0:
             # 尝试再次获取密钥
             active_key_configs = list(itertools.islice(_active_key_configs_cycle, 0, 1))
@@ -56,20 +57,30 @@ def get_next_openai_key_config() -> Optional[Dict[str, Any]]:
         return None
 
 
-def record_api_key_usage(key_id: str):
-    """记录API Key使用时间戳，并清理旧记录"""
-    now = datetime.utcnow()
-    if key_id not in api_key_usage:
-        api_key_usage[key_id] = deque()
-
-    api_key_usage[key_id].append(now)
-
-    cutoff_time = now - timedelta(seconds=USAGE_WINDOW_SECONDS)
-    while api_key_usage[key_id] and api_key_usage[key_id][0] < cutoff_time:
-        api_key_usage[key_id].popleft()
-
-    while len(api_key_usage[key_id]) > MAX_TIMESTAMPS_PER_KEY:
-        api_key_usage[key_id].popleft()
+async def record_api_key_usage(key_id: str, model: Optional[str] = None, status: Optional[str] = None):
+    """记录API Key使用信息到数据库"""
+    try:
+        # 增加内存中的计数器（兼容现有代码）
+        now = datetime.utcnow()
+        if key_id not in api_key_usage:
+            api_key_usage[key_id] = deque()
+        
+        api_key_usage[key_id].append(now)
+        
+        cutoff_time = now - timedelta(seconds=USAGE_WINDOW_SECONDS)
+        while api_key_usage[key_id] and api_key_usage[key_id][0] < cutoff_time:
+            api_key_usage[key_id].popleft()
+        
+        while len(api_key_usage[key_id]) > MAX_TIMESTAMPS_PER_KEY:
+            api_key_usage[key_id].popleft()
+            
+        # 记录到数据库
+        await db.log_api_request(key_id, model, status)
+        
+        # 增加该密钥的total_requests计数
+        await db.increment_api_key_requests(key_id)
+    except Exception as e:
+        logger.error(f"记录API密钥使用情况时出错: {str(e)}")
 
 
 def mask_api_key_for_display(api_key: str) -> str:
@@ -111,8 +122,10 @@ def mask_api_key_for_display(api_key: str) -> str:
             return masked_key.ljust(target_len)
 
 
-# 初始化密钥循环
-update_openai_key_cycle()
+# 初始化密钥循环（异步初始化）
+async def init_key_cycle():
+    """异步初始化密钥循环"""
+    await update_openai_key_cycle()
 
 
 # JWT令牌工具

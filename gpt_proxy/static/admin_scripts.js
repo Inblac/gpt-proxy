@@ -734,7 +734,7 @@ async function validateSingleKey(keyId, displayKey) {
     if (!confirm(`确定要验证 Key "${displayKey}" 吗？`)) {
         return;
     }
-    
+
     document.getElementById('loading').classList.remove('hidden');
     try {
         const result = await apiRequest(`/api/validate_key/${keyId}`, 'POST');
@@ -754,6 +754,29 @@ async function validateSingleKey(keyId, displayKey) {
     } finally {
         document.getElementById('loading').classList.add('hidden');
     }
+}
+
+// 清理日志函数
+async function cleanupApiLogs(days) {
+    if (!confirm(`确定要清理 ${days} 天以上的API请求日志吗？`)) return;
+
+    await fadeIn(document.getElementById('loading'));
+    try {
+        const result = await apiRequest(`/api/cleanup-logs?days_to_keep=${days}`, 'POST');
+        const message = `已清理 ${result.deleted_count} 条 ${days} 天以上的日志记录`;
+        showKeyManagementError(message);
+        // 刷新统计数据
+        await loadStats();
+    } catch (error) {
+        console.error("清理日志失败:", error);
+        showKeyManagementError(`清理日志失败: ${error.message}`);
+    } finally {
+        await fadeOut(document.getElementById('loading'));
+    }
+}
+
+async function triggerValidateKeys() {
+    // ... existing code ...
 }
 
 // 主题初始化
