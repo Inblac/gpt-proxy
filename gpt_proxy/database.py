@@ -9,7 +9,6 @@ from pathlib import Path
 import urllib.parse
 
 from databases import Database
-from databases.interfaces import Record
 from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer, DateTime, select, func
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -63,7 +62,7 @@ Base = declarative_base(metadata=metadata)
 
 # 配置数据库连接池
 if DB_TYPE in ["postgresql", "postgres"]:
-    database = Database(DATABASE_URL, min_size=5, max_size=20)
+    database = Database(DATABASE_URL, min_size=2, max_size=5)
 else:  # SQLite
     database = Database(DATABASE_URL)
 
