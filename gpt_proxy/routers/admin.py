@@ -1,9 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import httpx
-from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Header
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Depends
 
 from .. import schemas
 from .. import config

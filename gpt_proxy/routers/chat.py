@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from starlette.background import BackgroundTask
 from typing import Optional, Dict, Any
 import httpx
 import asyncio

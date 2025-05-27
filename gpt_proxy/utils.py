@@ -2,11 +2,9 @@ import itertools
 from datetime import datetime, timedelta
 from collections import deque
 from typing import Dict, Any, Optional, Deque
-from jose import JWTError, jwt
+from jose import jwt
 from datetime import datetime, timedelta
 import asyncio
-
-from fastapi import HTTPException
 
 from . import database as db
 from . import config

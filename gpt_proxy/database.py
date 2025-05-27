@@ -4,7 +4,7 @@
 import os
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any, Union, TypeVar, Sequence, cast
+from typing import List, Optional, Dict, Any, TypeVar
 from pathlib import Path
 import urllib.parse
 
@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer, 
 from sqlalchemy.ext.declarative import declarative_base
 
 from . import logger
-from .config import DB_TYPE, DB_CONNECTION_PARAMS
+from .config import DB_TYPE, DB_CONNECTION_PARAMS, MAX_ACTIVE_KEYS_LIMIT
 
 # 数据库路径
 DATA_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).joinpath("data")
@@ -170,10 +170,10 @@ async def get_api_keys_paginated(
     return [dict(record) for record in results], int(total_count)
 
 async def get_active_api_keys() -> List[Dict[str, Any]]:
-    """获取所有状态为 'active' 的 API Keys。"""
+    """获取所有状态为 'active' 的 API Keys，最多返回配置的结果数量（默认200）。"""
     query = openai_keys.select().where(
         openai_keys.c.status == 'active'
-    ).order_by(openai_keys.c.last_used_at)
+    ).order_by(openai_keys.c.last_used_at).limit(MAX_ACTIVE_KEYS_LIMIT)
     results = await database.fetch_all(query)
     return [dict(record) for record in results]
 

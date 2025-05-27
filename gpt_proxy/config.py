@@ -31,6 +31,8 @@ APP_CONFIG_MAX_RETRIES: int = 5
 # OpenAI API 密钥轮换配置
 MAX_CALLS_PER_KEY_PER_WINDOW: int = 1000
 USAGE_WINDOW_SECONDS: int = 3600  # 1小时
+# 查询活跃API密钥时返回的最大数量
+MAX_ACTIVE_KEYS_LIMIT: int = 100
 
 # 配置文件路径（在'gpt_proxy'包的父目录中）
 CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "config.ini")
@@ -40,7 +42,7 @@ def load_app_config():
     """从config.ini文件加载应用配置"""
     global PROXY_API_KEYS, JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES, APP_CONFIG_MAX_RETRIES
     global OPENAI_API_ENDPOINT, OPENAI_VALIDATION_ENDPOINT, PROXY_API_KEY_HEADER
-    global MAX_CALLS_PER_KEY_PER_WINDOW, USAGE_WINDOW_SECONDS, DB_TYPE, DB_CONNECTION_PARAMS
+    global MAX_CALLS_PER_KEY_PER_WINDOW, USAGE_WINDOW_SECONDS, MAX_ACTIVE_KEYS_LIMIT, DB_TYPE, DB_CONNECTION_PARAMS
 
     config_parser = configparser.ConfigParser()
     if not os.path.exists(CONFIG_FILE_PATH):
@@ -127,8 +129,11 @@ def load_app_config():
             USAGE_WINDOW_SECONDS = config_parser["OpenAI_API_Keys_Config"].getint(
                 "usage_window_seconds", USAGE_WINDOW_SECONDS
             )
+            MAX_ACTIVE_KEYS_LIMIT = config_parser["OpenAI_API_Keys_Config"].getint(
+                "max_active_keys_limit", MAX_ACTIVE_KEYS_LIMIT
+            )
             logger.info(
-                f"OpenAI密钥配置: 最大调用次数={MAX_CALLS_PER_KEY_PER_WINDOW}, 使用窗口秒数={USAGE_WINDOW_SECONDS}"
+                f"OpenAI密钥配置: 最大调用次数={MAX_CALLS_PER_KEY_PER_WINDOW}, 使用窗口秒数={USAGE_WINDOW_SECONDS}, 活跃密钥限制={MAX_ACTIVE_KEYS_LIMIT}"
             )
         else:
             logger.warning(f"在 '{CONFIG_FILE_PATH}' 中未找到[OpenAI_API_Keys_Config]部分。将使用默认轮换配置。")
