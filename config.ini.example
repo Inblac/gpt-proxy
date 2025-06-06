@@ -9,6 +9,8 @@ access_token_expire_minutes = 60
 
 [App]
 max_retries = 5
+# 日志级别: debug, info, warning, error, critical
+log_level = info
 
 [OpenAI_Endpoints]
 # OpenAI聊天完成API的URL（也用于API密钥验证）

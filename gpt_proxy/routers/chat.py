@@ -140,7 +140,7 @@ async def chat_completions_proxy(
                     else:
                         error_content = response.text
                         logger.error(
-                            f"非流式请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
+                            f"非流式请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code}"
                         )
                         if response.status_code in [401, 403, 429] and key_id_for_db:
                             # 使用异步方法更新状态
@@ -234,7 +234,7 @@ async def list_models(proxy_api_key: str = Depends(dependencies.verify_proxy_api
                 else:
                     error_content = response.text
                     logger.error(
-                        f"/v1/models请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code} - {error_content}"
+                        f"/v1/models请求错误，Key ID: {key_id_for_db} (名称: {key_name_for_log}, 后缀: {key_short}): {response.status_code}"
                     )
                     if response.status_code in [401, 403, 429] and key_id_for_db:
                         # 使用异步方法更新状态

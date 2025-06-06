@@ -27,6 +27,7 @@ JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1小时
 
 # 应用配置
 APP_CONFIG_MAX_RETRIES: int = 5
+APP_LOG_LEVEL: str = "info"  # 默认日志级别
 
 # OpenAI API 密钥轮换配置
 MAX_CALLS_PER_KEY_PER_WINDOW: int = 1000
@@ -43,6 +44,7 @@ def load_app_config():
     global PROXY_API_KEYS, JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES, APP_CONFIG_MAX_RETRIES
     global OPENAI_API_ENDPOINT, OPENAI_VALIDATION_ENDPOINT, PROXY_API_KEY_HEADER
     global MAX_CALLS_PER_KEY_PER_WINDOW, USAGE_WINDOW_SECONDS, MAX_ACTIVE_KEYS_LIMIT, DB_TYPE, DB_CONNECTION_PARAMS
+    global APP_LOG_LEVEL
 
     config_parser = configparser.ConfigParser()
     if not os.path.exists(CONFIG_FILE_PATH):
@@ -106,9 +108,18 @@ def load_app_config():
                 APP_CONFIG_MAX_RETRIES = 1
             else:
                 logger.info(f"[App] max_retries配置已加载: {APP_CONFIG_MAX_RETRIES}")
+                
+            # 加载日志级别设置
+            APP_LOG_LEVEL = config_parser["App"].get("log_level", "info").lower()
+            valid_log_levels = ["debug", "info", "warning", "error", "critical"]
+            if APP_LOG_LEVEL not in valid_log_levels:
+                logger.warning(f"[App] log_level配置值('{APP_LOG_LEVEL}')无效。将使用默认值'info'。")
+                APP_LOG_LEVEL = "info"
+            else:
+                logger.info(f"[App] log_level配置已加载: {APP_LOG_LEVEL}")
         else:
             logger.warning(
-                f"在 '{CONFIG_FILE_PATH}' 中未找到[App]部分或'max_retries'键。将使用默认max_retries: {APP_CONFIG_MAX_RETRIES}。"
+                f"在 '{CONFIG_FILE_PATH}' 中未找到[App]部分。将使用默认配置。"
             )
 
         # 加载OpenAI API端点配置
@@ -171,6 +182,9 @@ def load_app_config():
 
             JWT_SECRET_KEY = secrets.token_urlsafe(32)
             logger.error(f"未知配置错误。已生成临时JWT_SECRET_KEY: {JWT_SECRET_KEY}。")
+    
+    # 更新日志级别
+    logger.update_logger_level()
 
 
 # 模块加载时初始化配置

@@ -35,11 +35,13 @@ def setup_logger(name=None, level=None):
 
     Args:
         name: 日志记录器名称，默认为根记录器
-        level: 日志级别字符串，默认为 info
+        level: 日志级别字符串，默认为配置中的设置或info
 
     Returns:
         配置好的日志记录器实例
     """
+    # 如果未指定级别，使用默认级别（初始时）
+    # 注意：config模块中的APP_LOG_LEVEL会在配置加载后被使用
     log_level = LOG_LEVELS.get(level or DEFAULT_LOG_LEVEL, logging.INFO)
     logger = logging.getLogger(name)
     logger.setLevel(log_level)
@@ -74,14 +76,6 @@ def setup_logger(name=None, level=None):
 default_logger = setup_logger()
 
 
-# 快捷函数，便于模块级导入和使用
-def get_logger(name=None, level=None):
-    """获取或创建指定名称的日志记录器"""
-    if not name:
-        return default_logger
-    return setup_logger(name, level)
-
-
 def debug(msg, *args, **kwargs):
     """记录DEBUG级别日志"""
     default_logger.debug(msg, *args, **kwargs)
@@ -105,3 +99,21 @@ def error(msg, *args, **kwargs):
 def critical(msg, *args, **kwargs):
     """记录CRITICAL级别日志"""
     default_logger.critical(msg, *args, **kwargs)
+
+
+# 当config模块加载完成后，更新默认日志记录器的级别
+def update_logger_level():
+    """当config模块加载完成后，更新日志记录器的级别"""
+    try:
+        from . import config
+
+        if hasattr(config, "APP_LOG_LEVEL"):
+            info(f"更新日志级别: {config.APP_LOG_LEVEL}")
+            log_level = LOG_LEVELS.get(config.APP_LOG_LEVEL, logging.INFO)
+            default_logger.setLevel(log_level)
+            # 同时更新处理器的级别
+            for handler in default_logger.handlers:
+                handler.setLevel(log_level)
+
+    except (ImportError, AttributeError):
+        pass
