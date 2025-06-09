@@ -22,15 +22,6 @@ class OpenAIChatRequest(BaseModel):
     user: Optional[str] = None
 
 
-class KeyValidationResult(BaseModel):
-    key_id: str
-    key_suffix: str
-    status_before: str
-    status_after: str
-    validation_success: bool
-    error_message: Optional[str] = None
-
-
 class OpenAIKeyDisplay(BaseModel):
     id: str
     api_key_masked: str
@@ -46,29 +37,11 @@ class NewOpenAIKeyPayload(BaseModel):
     name: Optional[str] = None
 
 
-class BulkOpenAIKeysPayload(BaseModel):
-    api_keys: str  # 包含多个key的字符串，每行一个key
-
-
 class AddKeyResult(BaseModel):
     success: bool
     key_suffix: str
     error_message: Optional[str] = None
     key_id: Optional[str] = None
-
-
-class BulkAddKeysResponse(BaseModel):
-    results: List[AddKeyResult]
-    success_count: int
-    error_count: int
-
-
-class KeyStatusUpdatePayload(BaseModel):
-    status: str
-
-
-class KeyNameUpdatePayload(BaseModel):
-    name: str
 
 
 class PageParams(BaseModel):
@@ -103,11 +76,6 @@ class PaginatedOpenAIKeys(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
-
-
-class ResetKeysResponse(BaseModel):
-    message: str
-    count: int
 
 
 class APIKeysBulkCreate(BaseModel):

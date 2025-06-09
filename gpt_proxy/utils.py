@@ -134,12 +134,6 @@ def mask_api_key_for_display(api_key: str) -> str:
             return masked_key.ljust(target_len)
 
 
-# 初始化密钥循环（异步初始化）
-async def init_key_cycle():
-    """异步初始化密钥循环"""
-    await update_openai_key_cycle()
-
-
 # JWT令牌工具
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """创建新的JWT访问令牌"""
